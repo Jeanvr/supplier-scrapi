@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urljoin, urlparse
 from urllib.request import Request, urlopen
+from PIL import Image, ImageOps
 
 import pandas as pd
 from parsel import Selector
@@ -735,6 +736,38 @@ def download_binary(url: str, destination: Path, accept_pdf: bool = False) -> tu
         return False, url, "", f"download_error:{exc}"
 
 
+def save_ecommerce_jpg(src_path: Path, dst_base_path: Path, canvas_size: tuple[int, int] = (1600, 1600)) -> Path:
+    dst_path = dst_base_path.with_suffix(".jpg")
+    dst_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with Image.open(src_path) as img:
+        img = ImageOps.exif_transpose(img).convert("RGBA")
+
+        white_bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+        img = Image.alpha_composite(white_bg, img).convert("RGB")
+
+        img.thumbnail(canvas_size, Image.LANCZOS)
+
+        canvas = Image.new("RGB", canvas_size, (255, 255, 255))
+        x = (canvas_size[0] - img.width) // 2
+        y = (canvas_size[1] - img.height) // 2
+        canvas.paste(img, (x, y))
+
+        if dst_path.exists():
+            dst_path.unlink()
+
+        canvas.save(
+            dst_path,
+            "JPEG",
+            quality=92,
+            optimize=True,
+            progressive=True,
+            subsampling=0,
+        )
+
+    return dst_path
+
+
 def build_download_paths(
     reference: str,
     name: str,
@@ -797,20 +830,22 @@ def attach_downloads(
     pdf_ok = False
 
     if image_url and image_path_base is not None:
-        temp_path = image_path_base.with_suffix(".bin")
+        temp_path = image_path_base.with_suffix(".imgtmp")
         ok, final_url, content_type, error = download_binary(image_url, temp_path, accept_pdf=False)
+
         if ok:
-            ext = guess_extension(final_url, content_type, ".jpg")
-            final_image_path = image_path_base.with_suffix(ext)
-            if final_image_path.exists():
-                final_image_path.unlink()
-            temp_path.replace(final_image_path)
-            result["local_image"] = str(final_image_path)
-            result["downloaded_image_url"] = final_url
-            image_ok = True
-        else:
-            if temp_path.exists():
+            try:
+                final_image_path = save_ecommerce_jpg(temp_path, image_path_base)
                 temp_path.unlink(missing_ok=True)
+
+                result["local_image"] = str(final_image_path)
+                result["downloaded_image_url"] = final_url
+                image_ok = True
+            except Exception as exc:
+                temp_path.unlink(missing_ok=True)
+                notes.append(f"image:convert_error:{exc}")
+        else:
+            temp_path.unlink(missing_ok=True)
             notes.append(f"image:{error or 'unknown_error'}")
 
     if pdf_url and pdf_path is not None:
@@ -919,9 +954,91 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         "fallback_pdf_url": docs_fallback.get("fallback_pdf_url", ""),
         "notes": " | ".join([n for n in notes if n]),
     }
+def bosch_family_key(name: str) -> str:
+    raw = clean_spaces(name).upper()
+    if not raw:
+        return ""
+
+    raw = re.sub(r"\b(BOSCH|JUNKERS)\b", " ", raw)
+    raw = re.sub(r"\s+", " ", raw).strip()
+
+    model_match = re.search(r"\b([A-Z]{1,8}\d{3,4}[A-Z]{0,3})\b", raw)
+    model = model_match.group(1) if model_match else ""
+
+    orientation = ""
+    if "VERTICAL" in raw:
+        orientation = "VERTICAL"
+    elif "HORIZONTAL" in raw:
+        orientation = "HORIZONTAL"
+
+    cleaned = re.sub(r"\b\d{2,4}\s*[A-Z]\b", " ", raw)
+    cleaned = re.sub(r"\b\d{2,4}\b", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    parts = []
+    if model:
+        parts.append(model)
+    if orientation:
+        parts.append(orientation)
+    if cleaned:
+        parts.append(cleaned)
+
+    return " | ".join(parts)
 
 
-def main() -> None:
+def promote_family_tech_sheets(results: list[dict]) -> list[dict]:
+    family_tech_map: dict[str, dict] = {}
+
+    for result in results:
+        if result.get("resolver_status") != "resolved_ficha_tecnica":
+            continue
+
+        family_key = bosch_family_key(
+            result.get("name", "") or result.get("matched_catalog_name", "")
+        )
+        pdf_url = clean_spaces(result.get("preferred_pdf_url", ""))
+
+        if not family_key or not pdf_url:
+            continue
+
+        if family_key not in family_tech_map:
+            family_tech_map[family_key] = {
+                "preferred_pdf_url": pdf_url,
+                "preferred_pdf_kind": "ficha_tecnica",
+                "preferred_pdf_label": clean_spaces(result.get("preferred_pdf_label", "")),
+                "preferred_pdf_check_ok": result.get("preferred_pdf_check_ok", ""),
+                "preferred_pdf_content_type": result.get("preferred_pdf_content_type", ""),
+                "source_reference": result.get("reference", ""),
+            }
+
+    for result in results:
+        if result.get("resolver_status") != "resolved_catalogo_producto":
+            continue
+
+        family_key = bosch_family_key(
+            result.get("name", "") or result.get("matched_catalog_name", "")
+        )
+        inherited = family_tech_map.get(family_key)
+
+        if not inherited:
+            continue
+
+        result["preferred_pdf_url"] = inherited["preferred_pdf_url"]
+        result["preferred_pdf_kind"] = "ficha_tecnica"
+        result["preferred_doc_type"] = "ficha_tecnica"
+        result["preferred_pdf_label"] = inherited["preferred_pdf_label"] or result.get("preferred_pdf_label", "")
+        result["preferred_title"] = result["preferred_pdf_label"]
+        result["preferred_pdf_check_ok"] = inherited["preferred_pdf_check_ok"]
+        result["preferred_pdf_content_type"] = inherited["preferred_pdf_content_type"]
+        result["resolver_status"] = "resolved_ficha_tecnica"
+
+        inherited_note = f"family_tech_inherited_from:{inherited['source_reference']}"
+        existing_notes = clean_spaces(result.get("notes", ""))
+        result["notes"] = " | ".join([x for x in [existing_notes, inherited_note] if x])
+
+    return results
+
+def main():
     parser = argparse.ArgumentParser(
         description="Resolver Bosch: imagen + ficha técnica/catálogo desde Bosch Home Comfort, con docs portal como fallback."
     )
@@ -998,22 +1115,38 @@ def main() -> None:
         else:
             print(f"[{idx + 1}/{total}] Resolviendo {reference} | {name}")
             result = resolve_reference(reference, name, catalog_rows)
-            result = attach_downloads(
-                result=result,
-                reference=reference,
-                name=name,
-                download_enabled=args.download,
-                images_dir=images_dir,
-                pdfs_dir=pdfs_dir,
-            )
             print(
-                f"  -> {result['resolver_status']} | "
+                f"  -> provisional {result['resolver_status']} | "
                 f"img={'si' if result['resolved_image_url'] else 'no'} | "
+                f"pdf={result['preferred_pdf_kind'] or '-'}"
+            )
+
+        results.append(result)
+
+    results = promote_family_tech_sheets(results)
+
+    final_results = []
+    for result in results:
+        result = attach_downloads(
+            result=result,
+            reference=clean_spaces(result.get("reference", "")),
+            name=clean_spaces(result.get("name", "")),
+            download_enabled=args.download,
+            images_dir=images_dir,
+            pdfs_dir=pdfs_dir,
+        )
+
+        if result.get("reference"):
+            print(
+                f"  => final {result['reference']} | "
+                f"{result['resolver_status']} | "
                 f"pdf={result['preferred_pdf_kind'] or '-'} | "
                 f"download={result['download_status']}"
             )
 
-        results.append(result)
+        final_results.append(result)
+
+    results = final_results
 
     result_df = pd.DataFrame(results)
 
