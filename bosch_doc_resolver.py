@@ -777,21 +777,18 @@ def build_download_paths(
     images_dir: Path,
     pdfs_dir: Path,
 ) -> tuple[Path | None, Path | None]:
-    ref_part = slugify(reference, max_length=40)
-    name_part = slugify(name, max_length=70)
+    ref_part = slugify(reference, max_length=40).replace("-", "")
 
     image_path = None
     pdf_path = None
 
     if resolved_image_url:
-        image_path = images_dir / f"{ref_part}__{name_part}"
+        image_path = images_dir / f"SS12_BOSCH_{ref_part}_IMG"
 
     if preferred_pdf_url:
-        pdf_kind = slugify(preferred_pdf_kind or "pdf", max_length=30)
-        pdf_path = pdfs_dir / f"{ref_part}__{pdf_kind}__{name_part}.pdf"
+        pdf_path = pdfs_dir / f"SS12_BOSCH_{ref_part}_FT.pdf"
 
     return image_path, pdf_path
-
 
 def attach_downloads(
     result: dict,
