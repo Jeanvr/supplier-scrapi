@@ -1,5 +1,11 @@
 from __future__ import annotations
-
+from src.core.text import (
+    normalize_text as core_normalize_text,
+    normalize_search_text as core_normalize_search_text,
+    clean_spaces as core_clean_spaces,
+    slugify as core_slugify,
+    build_name_tokens as core_build_name_tokens,
+)
 import argparse
 import ast
 import json
@@ -131,56 +137,18 @@ IMAGE_EXT_BY_CONTENT_TYPE = {
 
 
 def normalize_text(value: object) -> str:
-    if value is None:
-        return ""
-    text = str(value).strip()
-    if not text:
-        return ""
-    text = unicodedata.normalize("NFKD", text)
-    text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    text = text.replace("\xa0", " ")
-    text = re.sub(r"\s+", " ", text)
-    return text.strip().lower()
-
+    return core_normalize_text(value)
 
 def normalize_search_text(value: object) -> str:
-    text = normalize_text(value)
-    if not text:
-        return ""
-
-    replacements = [
-        (r"\btr2000t\b", "tronic 2000 t"),
-        (r"\btr(\d{4})t\b", r"tronic \1 t"),
-        (r"\bt(\d{4})sr\b", r"therm \1 sr"),
-        (r"\bt(\d{4})s\b", r"therm \1 s"),
-        (r"\btherm\s+6600\s+s/sr\b", "therm 6600 s sr"),
-        (r"\b60/100\b", "60 100"),
-        (r"\b80/110\b", "80 110"),
-        (r"\b80/80\b", "80 80"),
-        (r"[^a-z0-9]+", " "),
-    ]
-
-    for pattern, replacement in replacements:
-        text = re.sub(pattern, replacement, text)
-
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    return core_normalize_search_text(value)
 
 
 def clean_spaces(value: object) -> str:
-    if value is None:
-        return ""
-    text = str(value).replace("\xa0", " ")
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
+    return core_clean_spaces(value)
 
 
 def slugify(value: object, max_length: int = 80) -> str:
-    text = normalize_text(value)
-    text = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
-    if not text:
-        return "file"
-    return text[:max_length].strip("-") or "file"
+    return core_slugify(value, max_length=max_length)
 
 
 def pick_column(df: pd.DataFrame, aliases: list[str], required: bool = True) -> str | None:
@@ -220,17 +188,7 @@ def validate_pdf_url(pdf_url: str) -> tuple[bool, str, str]:
 
 
 def build_name_tokens(name: str) -> list[str]:
-    text = normalize_search_text(name)
-    tokens = re.findall(r"[a-z0-9]+", text)
-    result = []
-    for token in tokens:
-        if len(token) < 2:
-            continue
-        if token in STOPWORDS:
-            continue
-        result.append(token)
-    return result
-
+    return core_build_name_tokens(name)
 
 def first_non_empty(row: dict, keys: list[str]) -> str:
     for key in keys:
@@ -1035,7 +993,7 @@ def promote_family_tech_sheets(results: list[dict]) -> list[dict]:
 
     return results
 
-def main():
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Resolver Bosch: imagen + ficha técnica/catálogo desde Bosch Home Comfort, con docs portal como fallback."
     )
@@ -1061,13 +1019,21 @@ def main():
         default="data/output/pdfs/bosch_resolved",
         help="Carpeta de descarga de PDFs resueltos",
     )
-    args = parser.parse_args()
-
-    excel_path = Path(args.excel)
-    out_path = Path(args.out)
-    catalog_path = Path(args.catalog_jsonl)
-    images_dir = Path(args.images_dir)
-    pdfs_dir = Path(args.pdfs_dir)
+    return parser
+def run_bosch_doc_resolver(
+    *,
+    excel: str,
+    out: str,
+    catalog_jsonl: str = "data/output/bosch_catalog.jsonl",
+    download: bool = False,
+    images_dir: str = "data/output/images/bosch_resolved",
+    pdfs_dir: str = "data/output/pdfs/bosch_resolved",
+) -> None:
+    excel_path = Path(excel)
+    out_path = Path(out)
+    catalog_path = Path(catalog_jsonl)
+    images_dir_path = Path(images_dir)
+    pdfs_dir_path = Path(pdfs_dir)
 
     if not excel_path.exists():
         raise FileNotFoundError(f"No existe el Excel: {excel_path}")
@@ -1128,9 +1094,9 @@ def main():
             result=result,
             reference=clean_spaces(result.get("reference", "")),
             name=clean_spaces(result.get("name", "")),
-            download_enabled=args.download,
-            images_dir=images_dir,
-            pdfs_dir=pdfs_dir,
+            download_enabled=download,
+            images_dir=images_dir_path,
+            pdfs_dir=pdfs_dir_path,
         )
 
         if result.get("reference"):
@@ -1166,9 +1132,21 @@ def main():
         print(f"  downloaded_image_and_pdf: {(output_df['download_status'] == 'downloaded_image_and_pdf').sum()}")
         print(f"  downloaded_image_only: {(output_df['download_status'] == 'downloaded_image_only').sum()}")
     print(f"  output: {out_path}")
-    if args.download:
-        print(f"  images_dir: {images_dir}")
-        print(f"  pdfs_dir: {pdfs_dir}")
+    if download:
+        print(f"  images_dir: {images_dir_path}")
+        print(f"  pdfs_dir: {pdfs_dir_path}")
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+    run_bosch_doc_resolver(
+        excel=args.excel,
+        out=args.out,
+        catalog_jsonl=args.catalog_jsonl,
+        download=args.download,
+        images_dir=args.images_dir,
+        pdfs_dir=args.pdfs_dir,
+    )
 
 
 if __name__ == "__main__":
