@@ -6,12 +6,19 @@ from src.core.text import (
     slugify as core_slugify,
     build_name_tokens as core_build_name_tokens,
 )
+from src.providers.bosch.config import (
+    DOCS_BASE,
+    DOCS_SEARCH_URL,
+    DOCS_PORTAL_DOC_TYPES,
+    MEDIA_PREFIX,
+    DEFAULT_IMAGES_DIR,
+    DEFAULT_PDFS_DIR,
+)
 import argparse
 import ast
 import json
 import mimetypes
 import re
-import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -21,11 +28,6 @@ from PIL import Image, ImageOps
 
 import pandas as pd
 from parsel import Selector
-
-
-BOSCH_BASE = "https://www.bosch-homecomfort.com"
-DOCS_BASE = "https://bosch-es-es-c.boschhc-documents.com"
-DOCS_SEARCH_URL = DOCS_BASE + "/td/?query={query}"
 
 HTML_HEADERS = {
     "User-Agent": (
@@ -114,19 +116,6 @@ STOPWORDS = {
     "mm",
     "l",
 }
-
-DOCS_PORTAL_DOC_TYPES = [
-    "tabla datos de producto",
-    "ficha tecnica",
-    "ficha de producto",
-    "hoja de datos de energia",
-    "manual de instalacion",
-    "instrucciones de uso",
-    "instrucciones de servicio",
-    "catalogo de piezas de repuesto",
-    "suplemento",
-]
-
 IMAGE_EXT_BY_CONTENT_TYPE = {
     "image/jpeg": ".jpg",
     "image/jpg": ".jpg",
@@ -739,13 +728,9 @@ def build_download_paths(
 
     image_path = None
     pdf_path = None
-
-    if resolved_image_url:
-        image_path = images_dir / f"SS12_BOSCH_{ref_part}_IMG"
-
-    if preferred_pdf_url:
-        pdf_path = pdfs_dir / f"SS12_BOSCH_{ref_part}_FT.pdf"
-
+    image_path = images_dir / f"{MEDIA_PREFIX}_{ref_part}_IMG"
+    pdf_path = pdfs_dir / f"{MEDIA_PREFIX}_{ref_part}_FT.pdf"
+    
     return image_path, pdf_path
 
 def attach_downloads(
@@ -1001,7 +986,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--out", required=True, help="Ruta del Excel de salida")
     parser.add_argument(
         "--catalog-jsonl",
-        default="data/output/bosch_catalog.jsonl",
+        default=DEFAULT_IMAGES_DIR,
         help="Ruta del catálogo JSONL Bosch ya scrapeado",
     )
     parser.add_argument(
@@ -1016,7 +1001,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--pdfs-dir",
-        default="data/output/pdfs/bosch_resolved",
+        default=DEFAULT_PDFS_DIR,
         help="Carpeta de descarga de PDFs resueltos",
     )
     return parser
@@ -1026,8 +1011,8 @@ def run_bosch_doc_resolver(
     out: str,
     catalog_jsonl: str = "data/output/bosch_catalog.jsonl",
     download: bool = False,
-    images_dir: str = "data/output/images/bosch_resolved",
-    pdfs_dir: str = "data/output/pdfs/bosch_resolved",
+    images_dir: str = DEFAULT_IMAGES_DIR,
+    pdfs_dir: str = DEFAULT_PDFS_DIR,
 ) -> None:
     excel_path = Path(excel)
     out_path = Path(out)
@@ -1133,7 +1118,6 @@ def run_bosch_doc_resolver(
         print(f"  downloaded_image_only: {(output_df['download_status'] == 'downloaded_image_only').sum()}")
     print(f"  output: {out_path}")
     if download:
-        print(f"  images_dir: {images_dir_path}")
         print(f"  pdfs_dir: {pdfs_dir_path}")
 
 
