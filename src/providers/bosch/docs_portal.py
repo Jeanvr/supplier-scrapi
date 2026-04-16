@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin
 
 from parsel import Selector
 
@@ -120,3 +120,52 @@ def score_docs_portal_candidate(candidate: dict, reference: str, name: str) -> i
         score -= 900
 
     return score
+def resolve_from_docs_portal(
+    reference: str,
+    name: str,
+    *,
+    search_url_template: str,
+    fetch_html,
+    html_headers: dict[str, str],
+) -> dict:
+    queries = []
+    ref = clean_spaces(reference)
+    name_q = normalize_search_text(name)
+
+    if ref:
+        queries.append(ref)
+    if ref and name_q:
+        queries.append(f"{ref} {name_q}")
+
+    best = None
+    notes = []
+
+    for query in queries:
+        search_url = search_url_template.format(query=quote(query))
+        try:
+            html, final_url, _ = fetch_html(search_url, html_headers)
+        except Exception as exc:
+            notes.append(f"docs_search_error:{exc}")
+            continue
+
+        candidates = parse_docs_portal_results(html)
+        for cand in candidates:
+            cand["score"] = score_docs_portal_candidate(cand, reference, name)
+            cand["search_url"] = final_url
+            if best is None or cand["score"] > best["score"]:
+                best = cand
+
+    if best is None:
+        return {
+            "fallback_doc_type": "",
+            "fallback_title": "",
+            "fallback_pdf_url": "",
+            "fallback_notes": " | ".join(notes) if notes else "sin resultados docs portal",
+        }
+
+    return {
+        "fallback_doc_type": best.get("doc_type", ""),
+        "fallback_title": best.get("title", ""),
+        "fallback_pdf_url": best.get("pdf_url", ""),
+        "fallback_notes": " | ".join(notes),
+    }

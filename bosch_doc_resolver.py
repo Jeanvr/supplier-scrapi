@@ -18,6 +18,7 @@ from src.providers.bosch.docs_portal import (
     detect_docs_portal_type,
     choose_context_text,
     parse_docs_portal_results,
+    resolve_from_docs_portal,
     score_docs_portal_candidate,
 )
 from src.providers.bosch.family import promote_family_tech_sheets
@@ -500,50 +501,6 @@ def resolve_from_product_page(page_url: str, catalog_image_url: str = "") -> dic
         "preferred_pdf_url": preferred.get("href", "") if preferred else "",
         "page_notes": "",
     }
-def resolve_from_docs_portal(reference: str, name: str) -> dict:
-    queries = []
-    ref = clean_spaces(reference)
-    name_q = normalize_search_text(name)
-
-    if ref:
-        queries.append(ref)
-    if ref and name_q:
-        queries.append(f"{ref} {name_q}")
-
-    best = None
-    notes = []
-
-    for query in queries:
-        search_url = DOCS_SEARCH_URL.format(query=quote(query))
-        try:
-            html, final_url, _ = fetch_url(search_url, HTML_HEADERS)
-        except Exception as exc:
-            notes.append(f"docs_search_error:{exc}")
-            continue
-
-        candidates = parse_docs_portal_results(html)
-        for cand in candidates:
-            cand["score"] = score_docs_portal_candidate(cand, reference, name)
-            cand["search_url"] = final_url
-            if best is None or cand["score"] > best["score"]:
-                best = cand
-
-    if best is None:
-        return {
-            "fallback_doc_type": "",
-            "fallback_title": "",
-            "fallback_pdf_url": "",
-            "fallback_notes": " | ".join(notes) if notes else "sin resultados docs portal",
-        }
-
-    return {
-        "fallback_doc_type": best.get("doc_type", ""),
-        "fallback_title": best.get("title", ""),
-        "fallback_pdf_url": best.get("pdf_url", ""),
-        "fallback_notes": " | ".join(notes),
-    }
-
-
 def guess_extension(url: str, content_type: str, default_ext: str) -> str:
     url_path = urlparse(url).path.lower()
 
@@ -750,7 +707,13 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
     else:
         notes.append("sin_match_fuerte_en_bosch_catalog")
 
-    docs_fallback = resolve_from_docs_portal(reference, name)
+    docs_fallback = resolve_from_docs_portal(
+    reference,
+    name,
+    search_url_template=DOCS_SEARCH_URL,
+    fetch_html=fetch_url,
+    html_headers=HTML_HEADERS,
+)
 
     pdf_check_ok = ""
     pdf_content_type = ""
