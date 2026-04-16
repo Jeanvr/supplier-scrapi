@@ -14,18 +14,9 @@ from src.providers.bosch.family import promote_family_tech_sheets
 from src.providers.bosch.catalog import load_catalog_rows, find_best_catalog_row
 import argparse
 from pathlib import Path
-from urllib.request import Request, urlopen
+from src.providers.bosch.http import HTML_HEADERS, fetch_url
 import pandas as pd
 
-HTML_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-}
 REF_ALIASES = [
     "referencia",
     "ref",
@@ -59,14 +50,6 @@ def pick_column(df: pd.DataFrame, aliases: list[str], required: bool = True) -> 
         raise ValueError(f"No se encontró ninguna columna válida entre: {aliases}")
 
     return ""
-
-def fetch_url(url: str, headers: dict | None = None) -> tuple[str, str, str]:
-    req = Request(url, headers=headers or HTML_HEADERS)
-    with urlopen(req, timeout=45) as response:
-        final_url = response.geturl()
-        content_type = response.headers.get("Content-Type", "")
-        html = response.read().decode("utf-8", errors="replace")
-        return html, final_url, content_type
 def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> dict:
     matched_row, matched_score = find_best_catalog_row(reference, name, catalog_rows)
 
