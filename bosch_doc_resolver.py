@@ -1,39 +1,21 @@
 from __future__ import annotations
 from src.core.text import (
-    normalize_text as core_normalize_text,
-    normalize_search_text as core_normalize_search_text,
-    clean_spaces as core_clean_spaces,
-    slugify as core_slugify,
-    build_name_tokens as core_build_name_tokens,
+clean_spaces as core_clean_spaces,
 )
 from src.providers.bosch.config import (
-    DOCS_BASE,
     DOCS_SEARCH_URL,
-    DOCS_PORTAL_DOC_TYPES,
     DEFAULT_IMAGES_DIR,
     DEFAULT_PDFS_DIR,
 )
 from src.providers.bosch.product_page import resolve_from_product_page
-from src.providers.bosch.media import attach_downloads
-from src.providers.bosch.docs_portal import (
-    detect_docs_portal_type,
-    choose_context_text,
-    parse_docs_portal_results,
-    resolve_from_docs_portal,
-    score_docs_portal_candidate,
-)
+from src.providers.bosch.media import attach_downloads, validate_pdf_url
+from src.providers.bosch.docs_portal import resolve_from_docs_portal
 from src.providers.bosch.family import promote_family_tech_sheets
 from src.providers.bosch.catalog import load_catalog_rows, find_best_catalog_row
 import argparse
-import ast
-import json
-from difflib import SequenceMatcher
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urljoin
 from urllib.request import Request, urlopen
 import pandas as pd
-from parsel import Selector
 
 HTML_HEADERS = {
     "User-Agent": (
@@ -44,19 +26,6 @@ HTML_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
 }
-
-BINARY_HEADERS = {
-    "User-Agent": HTML_HEADERS["User-Agent"],
-    "Accept": "*/*",
-    "Accept-Language": HTML_HEADERS["Accept-Language"],
-}
-
-PDF_HEADERS = {
-    "User-Agent": HTML_HEADERS["User-Agent"],
-    "Accept": "application/pdf,*/*;q=0.8",
-    "Accept-Language": HTML_HEADERS["Accept-Language"],
-}
-
 REF_ALIASES = [
     "referencia",
     "ref",
@@ -77,78 +46,15 @@ NAME_ALIASES = [
     "artículo",
 ]
 
-STOPWORDS = {
-    "bosch",
-    "junkers",
-    "caldera",
-    "calentador",
-    "calentadores",
-    "termo",
-    "termos",
-    "electrico",
-    "eléctrico",
-    "electric",
-    "agua",
-    "gas",
-    "natural",
-    "nat",
-    "vertical",
-    "horizontal",
-    "toma",
-    "superior",
-    "inferior",
-    "condensacion",
-    "condensación",
-    "mural",
-    "de",
-    "del",
-    "la",
-    "el",
-    "los",
-    "las",
-    "y",
-    "con",
-    "para",
-    "por",
-    "en",
-    "no",
-    "nox",
-    "bajo",
-    "baix",
-    "baja",
-    "alto",
-    "w",
-    "kw",
-    "mm",
-    "l",
-}
-def normalize_text(value: str) -> str:
-    return core_normalize_text(value)
-
-
-def normalize_search_text(value: str) -> str:
-    return core_normalize_search_text(value)
-
-
 def clean_spaces(value: str) -> str:
     return core_clean_spaces(value)
 
-
-def slugify(value: str, max_length: int = 120) -> str:
-    return core_slugify(value, max_length=max_length)
-
-
-def build_name_tokens(value: str) -> list[str]:
-    return core_build_name_tokens(value)
-
-
 def pick_column(df: pd.DataFrame, aliases: list[str], required: bool = True) -> str:
-    normalized = {normalize_text(col): col for col in df.columns}
+    normalized = {core_clean_spaces(col).casefold(): col for col in df.columns}
     for alias in aliases:
-        match = normalized.get(normalize_text(alias))
+        match = normalized.get(core_clean_spaces(alias).casefold())
         if match:
             return match
-
     if required:
         raise ValueError(f"No se encontró ninguna columna válida entre: {aliases}")
 
@@ -161,20 +67,6 @@ def fetch_url(url: str, headers: dict | None = None) -> tuple[str, str, str]:
         content_type = response.headers.get("Content-Type", "")
         html = response.read().decode("utf-8", errors="replace")
         return html, final_url, content_type
-    
-def validate_pdf_url(url: str) -> tuple[str, str, str]:
-    try:
-        req = Request(url, headers=PDF_HEADERS)
-        with urlopen(req, timeout=45) as response:
-            final_url = response.geturl()
-            content_type = (response.headers.get("Content-Type") or "").lower()
-
-        if "pdf" in content_type:
-            return "ok", final_url, content_type
-
-        return "", final_url, content_type
-    except (HTTPError, URLError, TimeoutError, OSError):
-        return "", url, ""
 def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> dict:
     matched_row, matched_score = find_best_catalog_row(reference, name, catalog_rows)
 

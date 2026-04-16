@@ -44,6 +44,20 @@ def download_binary(url: str, destination: Path, accept_pdf: bool = False) -> tu
         return True, final_url, content_type, ""
     except (HTTPError, URLError, TimeoutError, OSError) as exc:
         return False, url, "", f"download_error:{exc}"
+    
+def validate_pdf_url(url: str) -> tuple[str, str, str]:
+    try:
+        req = Request(url, headers=PDF_HEADERS)
+        with urlopen(req, timeout=45) as response:
+            final_url = response.geturl()
+            content_type = (response.headers.get("Content-Type") or "").lower()
+
+        if "pdf" in content_type:
+            return "ok", final_url, content_type
+
+        return "", final_url, content_type
+    except (HTTPError, URLError, TimeoutError, OSError):
+        return "", url, ""
 
 
 def save_ecommerce_jpg(
