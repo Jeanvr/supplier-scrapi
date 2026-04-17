@@ -11,15 +11,13 @@ import requests
 BASE_URL = "https://www.calpeda.com"
 PRODUCTS_URL = f"{BASE_URL}/en/products/"
 REQUEST_TIMEOUT = 30
-
-HREF_RE = re.compile(r'href=["\\\']([^"\\\']+)["\\\']', re.IGNORECASE)
-TITLE_RE = re.compile(r"<title>\\s*(.*?)\\s*</title>", re.IGNORECASE | re.DOTALL)
+HREF_RE = re.compile(r'href=["\']([^"\']+)["\']', re.IGNORECASE)
+TITLE_RE = re.compile(r"<title>\s*(.*?)\s*</title>", re.IGNORECASE | re.DOTALL)
 OG_IMAGE_RE = re.compile(
-    r'<meta[^>]+property=["\\\']og:image["\\\'][^>]+content=["\\\']([^"\\\']+)["\\\']',
+    r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
     re.IGNORECASE,
 )
-PDF_RE = re.compile(r'href=["\\\']([^"\\\']+\\.pdf[^"\\\']*)["\\\']', re.IGNORECASE)
-
+PDF_RE = re.compile(r'href=["\']([^"\']+\.pdf[^"\']*)["\']', re.IGNORECASE)
 
 def _fetch_text(url: str) -> str:
     response = requests.get(
@@ -53,17 +51,15 @@ def _extract_links(html: str, marker: str) -> list[str]:
         links.append(href)
     return _unique(links)
 
-
 def _extract_title(html: str, fallback: str) -> str:
     match = TITLE_RE.search(html)
     if not match:
         return fallback
 
     title = unescape(match.group(1)).strip()
-    title = re.sub(r"\\s+", " ", title)
-    title = re.sub(r"\\s*-\\s*Calpeda\\s*$", "", title, flags=re.IGNORECASE)
+    title = re.sub(r"\s+", " ", title)
+    title = re.sub(r"\s*-\s*Calpeda\s*$", "", title, flags=re.IGNORECASE)
     return title or fallback
-
 
 def _extract_og_image(html: str) -> str:
     match = OG_IMAGE_RE.search(html)
@@ -79,18 +75,40 @@ def _extract_pdf_urls(html: str) -> list[str]:
         if href.lower().endswith(".pdf") or ".pdf?" in href.lower():
             urls.append(href)
     return _unique(urls)
+def _score_pdf_url(url: str) -> int:
+    low = url.lower()
+    score = 0
 
+    if "/cataloghi_pdf/" in low:
+        score += 20
+
+    if "/datasheet_en/" in low:
+        score += 120
+
+    if "/en%20-%20english_new/" in low:
+        score += 80
+    elif "/en%20-%20english/" in low:
+        score += 60
+
+    if "60hz" in low or "/singoli_60hz/" in low:
+        score -= 80
+
+    if "/istruzioni" in low or "instruction" in low:
+        score -= 140
+
+    if "ie%20index" in low or "ie_index" in low or "/ie/" in low:
+        score -= 120
+
+    if "/it%20-%20italiano/" in low or "/it%20-%20italian/" in low:
+        score -= 60
+
+    return score
 
 def _pick_pdf(pdf_urls: list[str]) -> str:
     if not pdf_urls:
         return ""
 
-    for url in pdf_urls:
-        low = url.lower()
-        if "datasheet" in low:
-            return url
-
-    return pdf_urls[0]
+    return max(pdf_urls, key=_score_pdf_url)
 
 
 def _slug_from_url(url: str) -> str:

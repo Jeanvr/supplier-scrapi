@@ -191,6 +191,13 @@ def _score_row(reference: str, name: str, row: dict) -> int:
         score += 2
 
     return score
+def _classify_pdf_kind(pdf_url: str) -> tuple[str, str]:
+    low = clean_spaces(pdf_url).lower()
+
+    if "datasheet" in low:
+        return "resolved_ficha_tecnica", "ficha_tecnica"
+
+    return "resolved_catalogo_producto", "catalogo_producto"
 
 
 def _build_not_found(reference: str, name: str) -> dict:
@@ -246,9 +253,8 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
     source_url = clean_spaces(best_row.get("source_url", ""))
 
     if pdf_url:
-        resolver_status = "resolved_catalogo_producto"
-        preferred_pdf_kind = "catalogo_producto"
-        preferred_doc_type = "catalogo_producto"
+        resolver_status, preferred_pdf_kind = _classify_pdf_kind(pdf_url)
+        preferred_doc_type = preferred_pdf_kind
         preferred_title = matched_name
     elif image_url:
         resolver_status = "resolved_image_only"
