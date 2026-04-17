@@ -132,7 +132,6 @@ def _search_blob(row: dict) -> str:
     ]
     return _normalize(" ".join(str(part) for part in parts if part))
 
-
 def _score_row(reference: str, name: str, row: dict) -> int:
     score = 0
 
@@ -223,8 +222,6 @@ def _build_not_found(reference: str, name: str) -> dict:
         "fallback_pdf_url": "",
         "notes": "calpeda_no_search_text_match",
     }
-
-
 def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> dict:
     reference = clean_spaces(reference)
     name = clean_spaces(name)
