@@ -7,7 +7,6 @@ from urllib.request import Request, urlopen
 from PIL import Image, ImageOps
 
 from src.core.text import clean_spaces, slugify
-from src.providers.bosch.config import MEDIA_PREFIX
 
 BINARY_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -95,6 +94,12 @@ def save_ecommerce_jpg(
 
     return dst_path
 
+def _brand_from_dir(path: Path) -> str:
+    name = slugify(path.name or "", max_length=40).replace("-", "_").upper()
+    name = name.replace("_RESOLVED", "")
+    name = name.replace("_IMAGES", "")
+    name = name.replace("_PDFS", "")
+    return name or "GENERIC"
 
 def build_download_paths(
     reference: str,
@@ -105,10 +110,11 @@ def build_download_paths(
     images_dir: Path,
     pdfs_dir: Path,
 ) -> tuple[Path | None, Path | None]:
-    ref_part = slugify(reference, max_length=40).replace("-", "")
+    brand_part = _brand_from_dir(images_dir)
+    ref_part = slugify(reference, max_length=60).replace("-", "").upper()
 
-    image_path = images_dir / f"{MEDIA_PREFIX}_{ref_part}_IMG"
-    pdf_path = pdfs_dir / f"{MEDIA_PREFIX}_{ref_part}_FT.pdf"
+    image_path = images_dir / f"SS12_{brand_part}_{ref_part}_IMG"
+    pdf_path = pdfs_dir / f"SS12_{brand_part}_{ref_part}_FT.pdf"
 
     return image_path, pdf_path
 
