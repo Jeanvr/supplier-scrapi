@@ -190,11 +190,65 @@ def _score_row(reference: str, name: str, row: dict) -> int:
         score += 2
 
     return score
-def _classify_pdf_kind(pdf_url: str) -> tuple[str, str]:
+
+
+def _pdf_url_language_rank(pdf_url: str) -> int:
     low = clean_spaces(pdf_url).lower()
 
-    if "datasheet" in low:
+    spanish_markers = [
+        "/es%20-%20spanish/",
+        "/es%20-%20espanol/",
+        "/es%20-%20español/",
+        "/spanish/",
+        "/espanol/",
+        "/español/",
+    ]
+    english_markers = [
+        "/en%20-%20english_new/",
+        "/en%20-%20english/",
+        "/english_new/",
+        "/english/",
+    ]
+
+    for marker in spanish_markers:
+        if marker in low:
+            return 2
+
+    for marker in english_markers:
+        if marker in low:
+            return 1
+
+    return 0
+
+
+def _classify_pdf_kind(pdf_url: str) -> tuple[str, str]:
+    low = clean_spaces(pdf_url).lower()
+    language_rank = _pdf_url_language_rank(low)
+
+    tech_markers = [
+        "datasheet",
+        "data-sheet",
+        "ficha-tecnica",
+        "ficha_tecnica",
+        "fichatecnica",
+        "technical-data",
+        "technical_datasheet",
+        "technical-datasheet",
+        "scheda-tecnica",
+        "hoja-de-datos",
+    ]
+    catalog_markers = [
+        "/cataloghi_pdf/",
+        "catalogo",
+        "catalogue",
+        "catalog",
+    ]
+
+    if any(marker in low for marker in tech_markers):
         return "resolved_ficha_tecnica", "ficha_tecnica"
+
+    if language_rank > 0 and any(marker in low for marker in catalog_markers):
+        return "resolved_catalogo_producto", "catalogo_producto"
 
     return "resolved_catalogo_producto", "catalogo_producto"
 
