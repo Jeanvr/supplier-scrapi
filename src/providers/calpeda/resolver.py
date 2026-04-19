@@ -253,6 +253,67 @@ def _classify_pdf_kind(pdf_url: str) -> tuple[str, str]:
     return "resolved_catalogo_producto", "catalogo_producto"
 
 
+def _build_match_diagnostics(reference: str, name: str, matched_row: dict | None, best_score: int) -> dict:
+    if matched_row is None:
+        return {
+            "match_review_flag": "",
+            "match_review_reasons": "",
+            "match_ref_exact": "",
+            "match_name_token_overlap": "",
+        }
+
+    query_hints = _query_hints(reference, name)
+    query_text = f"{reference} {name} {query_hints}".strip()
+
+    ref_norm = _normalize(reference)
+    ref_compact = _compact(reference)
+    matched_ref = clean_spaces(matched_row.get("supplier_ref", ""))
+    matched_ref_norm = _normalize(matched_ref)
+    matched_ref_compact = _compact(matched_ref)
+
+    query_compact = _compact(query_text)
+    matched_name = clean_spaces(matched_row.get("name", ""))
+    matched_name_compact = _compact(matched_name)
+    matched_name_tokens = _tokens(matched_name)
+
+    query_tokens = set(_tokens(query_text))
+    matched_tokens = set(_tokens(f"{matched_ref} {matched_name}"))
+    overlap = query_tokens & matched_tokens
+
+    ref_exact = bool(
+        ref_norm and matched_ref_norm and (
+            ref_norm == matched_ref_norm or (ref_compact and ref_compact == matched_ref_compact)
+        )
+    )
+    matched_name_in_query = bool(
+        matched_name_compact and len(matched_name_compact) >= 3 and matched_name_compact in query_compact
+    )
+    matched_name_is_generic = len(matched_name_tokens) <= 1 and len(matched_name_compact) <= 3
+
+    reasons: list[str] = []
+    if best_score < 120:
+        reasons.append("low_score")
+    if not ref_exact:
+        reasons.append("ref_not_exact")
+    if len(overlap) == 0:
+        reasons.append("name_overlap_0")
+    elif len(overlap) == 1:
+        reasons.append("name_overlap_1")
+    if not matched_name_in_query and not matched_name_is_generic:
+        reasons.append("matched_name_not_in_query")
+
+    review_flag = ""
+    if best_score < 120 or (not ref_exact and len(overlap) == 0 and best_score < 250):
+        review_flag = "review_manual"
+
+    return {
+        "match_review_flag": review_flag,
+        "match_review_reasons": "|".join(reasons),
+        "match_ref_exact": "yes" if ref_exact else "no",
+        "match_name_token_overlap": str(len(overlap)),
+    }
+
+
 def _build_not_found(reference: str, name: str) -> dict:
     return {
         "resolver_status": "not_found",
@@ -274,6 +335,10 @@ def _build_not_found(reference: str, name: str) -> dict:
         "fallback_doc_type": "",
         "fallback_title": "",
         "fallback_pdf_url": "",
+        "match_review_flag": "",
+        "match_review_reasons": "",
+        "match_ref_exact": "",
+        "match_name_token_overlap": "",
         "notes": "calpeda_no_search_text_match",
     }
 def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> dict:
@@ -302,6 +367,7 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
     matched_name = clean_spaces(best_row.get("name", ""))
     matched_ref = clean_spaces(best_row.get("supplier_ref", ""))
     source_url = clean_spaces(best_row.get("source_url", ""))
+    diagnostics = _build_match_diagnostics(reference, name, best_row, best_score)
 
     if pdf_url:
         resolver_status, preferred_pdf_kind = _classify_pdf_kind(pdf_url)
@@ -338,5 +404,16 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         "fallback_doc_type": "",
         "fallback_title": "",
         "fallback_pdf_url": "",
-        "notes": "calpeda_search_text_match",
+        "match_review_flag": diagnostics["match_review_flag"],
+        "match_review_reasons": diagnostics["match_review_reasons"],
+        "match_ref_exact": diagnostics["match_ref_exact"],
+        "match_name_token_overlap": diagnostics["match_name_token_overlap"],
+        "notes": " | ".join(
+            [
+                x for x in [
+                    "calpeda_search_text_match",
+                    f"match_review:{diagnostics['match_review_reasons']}" if diagnostics["match_review_flag"] else "",
+                ] if x
+            ]
+        ),
     }
