@@ -4,11 +4,12 @@ import hashlib
 import re
 import unicodedata
 from pathlib import Path
+from urllib.parse import urlparse
 
 from src.core.pdf_tools import extract_pdf_text, find_reference_pages
 from src.core.text import clean_spaces
 from src.providers.calpeda.catalog import _extract_pdf_urls, _fetch_text
-from src.providers.bosch.media import download_binary
+from src.providers.bosch.media import download_binary, validate_pdf_url
 
 
 PDF_SUPPORT_CACHE_DIR = Path("/tmp/calpeda_pdf_support_cache")
@@ -69,6 +70,7 @@ MODEL_SIGNATURE_STOPWORDS = {
 
 def _empty_pdf_support() -> dict:
     return {
+        "preferred_pdf_language": "",
         "sku_exact_supported_by_pdf": "",
         "pdf_reference_pages": "",
         "pdf_support_reason": "",
@@ -88,6 +90,180 @@ def _candidate_pdf_url(result: dict) -> tuple[str, str]:
         return fallback_pdf_url, "fallback_pdf"
 
     return "", ""
+
+
+def _preferred_pdf_language(pdf_url: str) -> str:
+    low = clean_spaces(pdf_url).lower()
+    if not low:
+        return "unknown"
+
+    if any(marker in low for marker in (
+        "/es%20-%20spanish/",
+        "/es%20-%20espanol/",
+        "/es%20-%20español/",
+        "/es%20-%20espa%c3%b1ol/",
+        "/espanol/",
+        "/español/",
+    )):
+        return "es"
+
+    if any(marker in low for marker in (
+        "/en%20-%20english_new/",
+        "/en%20-%20english/",
+        "/english_new/",
+        "/english/",
+    )):
+        return "en"
+
+    return "unknown"
+
+
+def _append_unique(seq: list[str], value: str) -> None:
+    value = clean_spaces(value)
+    if value and value not in seq:
+        seq.append(value)
+
+
+def _derive_spanish_pdf_candidates(pdf_url: str, preferred_pdf_kind: str) -> list[str]:
+    pdf_url = clean_spaces(pdf_url)
+    preferred_pdf_kind = clean_spaces(preferred_pdf_kind)
+    if not pdf_url:
+        return []
+
+    candidates: list[str] = []
+    low = pdf_url.lower()
+
+    if preferred_pdf_kind == "ficha_tecnica" or "/datasheet_en/" in low:
+        candidate = pdf_url
+        changed = False
+        for english_dir in (
+            "/EN%20-%20English_New/datasheet_EN/",
+            "/EN%20-%20English/datasheet_EN/",
+        ):
+            if english_dir in candidate:
+                candidate = candidate.replace(english_dir, "/ES%20-%20Espa%C3%B1ol/DIVISI/")
+                changed = True
+        if "_EN.pdf" in candidate:
+            candidate = candidate.replace("_EN.pdf", "_ES.pdf")
+            changed = True
+        if changed and candidate != pdf_url:
+            _append_unique(candidates, candidate)
+
+    if preferred_pdf_kind == "catalogo_producto" or "catalogue_en" in low:
+        parsed = urlparse(pdf_url)
+        if parsed.scheme and parsed.netloc:
+            catalog_url = (
+                f"{parsed.scheme}://{parsed.netloc}"
+                "/wp-content/uploads/calpeda_prodotti/CATALOGHI_PDF/ES%20-%20Espa%C3%B1ol/Catalogo_50_SPA.pdf"
+            )
+            _append_unique(candidates, catalog_url)
+
+    return candidates
+
+
+def _validate_pdf_candidate(pdf_url: str, validation_cache: dict[str, tuple[str, str, str]]) -> str:
+    pdf_url = clean_spaces(pdf_url)
+    if not pdf_url:
+        return ""
+
+    if pdf_url not in validation_cache:
+        validation_cache[pdf_url] = validate_pdf_url(pdf_url)
+
+    status, final_url, _content_type = validation_cache[pdf_url]
+    if status == "ok":
+        return clean_spaces(final_url) or pdf_url
+
+    return ""
+
+
+def _spanish_product_page_url(product_page_url: str) -> str:
+    product_page_url = clean_spaces(product_page_url)
+    if not product_page_url:
+        return ""
+    if "/es/product/" in product_page_url:
+        return product_page_url
+    if "/en/product/" in product_page_url:
+        return product_page_url.replace("/en/product/", "/es/product/", 1)
+    return ""
+
+
+def _pick_spanish_pdf_from_urls(
+    current_pdf_url: str,
+    preferred_pdf_kind: str,
+    pdf_urls: list[str],
+) -> str:
+    spanish_urls = [url for url in pdf_urls if _preferred_pdf_language(url) == "es"]
+    if not spanish_urls:
+        return ""
+
+    derived_candidates = _derive_spanish_pdf_candidates(current_pdf_url, preferred_pdf_kind)
+    for candidate in derived_candidates:
+        if candidate in spanish_urls:
+            return candidate
+
+    preferred_pdf_kind = clean_spaces(preferred_pdf_kind)
+    if preferred_pdf_kind == "ficha_tecnica":
+        tech_urls = [
+            url for url in spanish_urls
+            if "/divisi/" in url.lower() or re.search(r"_es\.pdf(?:$|\?)", url.lower())
+        ]
+        if len(tech_urls) == 1:
+            return tech_urls[0]
+        return ""
+
+    if preferred_pdf_kind == "catalogo_producto":
+        catalog_urls = [
+            url for url in spanish_urls
+            if "catalogo" in url.lower() or "catalog" in url.lower()
+        ]
+        if len(catalog_urls) == 1:
+            return catalog_urls[0]
+
+    return ""
+
+
+def _localize_preferred_pdf_url(
+    result: dict,
+    *,
+    page_cache: dict[str, str],
+    spanish_page_pdf_cache: dict[str, list[str]],
+    validation_cache: dict[str, tuple[str, str, str]],
+) -> tuple[str, str]:
+    current_pdf_url = clean_spaces(result.get("preferred_pdf_url", ""))
+    current_language = _preferred_pdf_language(current_pdf_url)
+    if not current_pdf_url or current_language == "es":
+        return current_pdf_url, current_language
+
+    preferred_pdf_kind = clean_spaces(result.get("preferred_pdf_kind", ""))
+    for candidate in _derive_spanish_pdf_candidates(current_pdf_url, preferred_pdf_kind):
+        valid_candidate = _validate_pdf_candidate(candidate, validation_cache)
+        if valid_candidate:
+            return valid_candidate, "es"
+
+    spanish_page_url = _spanish_product_page_url(result.get("product_page_url", ""))
+    if not spanish_page_url:
+        return current_pdf_url, current_language
+
+    if spanish_page_url not in spanish_page_pdf_cache:
+        try:
+            html = page_cache.get(spanish_page_url)
+            if html is None:
+                html = _fetch_text(spanish_page_url)
+                page_cache[spanish_page_url] = html
+            spanish_page_pdf_cache[spanish_page_url] = _extract_pdf_urls(html)
+        except Exception:
+            spanish_page_pdf_cache[spanish_page_url] = []
+
+    candidate = _pick_spanish_pdf_from_urls(
+        current_pdf_url=current_pdf_url,
+        preferred_pdf_kind=preferred_pdf_kind,
+        pdf_urls=spanish_page_pdf_cache[spanish_page_url],
+    )
+    valid_candidate = _validate_pdf_candidate(candidate, validation_cache)
+    if valid_candidate:
+        return valid_candidate, "es"
+
+    return current_pdf_url, current_language
 
 
 def _normalize_signature_text(text: str) -> str:
@@ -379,9 +555,21 @@ def annotate_pdf_support(results: list[dict]) -> list[dict]:
     cached_pdf_paths: dict[str, tuple[Path | None, str]] = {}
     page_cache: dict[str, str] = {}
     b19_url_cache: dict[str, str] = {}
+    spanish_page_pdf_cache: dict[str, list[str]] = {}
+    validation_cache: dict[str, tuple[str, str, str]] = {}
 
     for result in results:
         result.update(_empty_pdf_support())
+
+        localized_pdf_url, preferred_pdf_language = _localize_preferred_pdf_url(
+            result,
+            page_cache=page_cache,
+            spanish_page_pdf_cache=spanish_page_pdf_cache,
+            validation_cache=validation_cache,
+        )
+        if localized_pdf_url:
+            result["preferred_pdf_url"] = localized_pdf_url
+        result["preferred_pdf_language"] = preferred_pdf_language
 
         resolver_status = clean_spaces(result.get("resolver_status", ""))
         if resolver_status not in CHECKABLE_STATUSES:
