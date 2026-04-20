@@ -17,3 +17,5 @@ data/output/
 # OS
 .DS_Store
 Thumbs.db
+.codex/
+supplier_scraper/codex/
