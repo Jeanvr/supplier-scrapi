@@ -87,6 +87,20 @@ def _tokens(text: str) -> list[str]:
     return out
 
 
+def _has_extended_family_variant(query_tokens: set[str], matched_tokens: set[str]) -> bool:
+    for query_token in query_tokens:
+        if len(query_token) < 4 or not query_token.isalpha():
+            continue
+        for matched_token in matched_tokens:
+            if len(matched_token) < 3 or len(matched_token) >= len(query_token):
+                continue
+            if not matched_token.isalpha():
+                continue
+            if query_token.startswith(matched_token) and len(query_token) - len(matched_token) <= 2:
+                return True
+    return False
+
+
 def _query_hints(reference: str, name: str) -> str:
     raw = f"{reference} {name}"
     norm = _normalize(raw)
@@ -403,17 +417,25 @@ def _build_image_diagnostics(
         "generic_catalog_ref" in reasons
         or "generic_catalog_name" in reasons
     )
+    family_variant_conflict = (
+        not ref_exact
+        and has_generic_match
+        and _has_extended_family_variant(query_family_tokens, matched_family_tokens)
+    )
+    if family_variant_conflict:
+        reasons.append("family_variant_extension")
+
     weak_image_evidence = (not ref_exact and overlap == 0) or has_generic_match
     ambiguous_competition = alternate_image_count > same_family_alternate_image_count
     if not ambiguous_competition and close_competitor_count > 0 and not ref_exact:
         ambiguous_competition = same_family_alternate_image_count == 0
 
     suspect = ""
-    if ambiguous_competition:
+    if ambiguous_competition or family_variant_conflict:
         suspect = "yes"
 
     match_scope = "sku"
-    if ambiguous_competition:
+    if ambiguous_competition or family_variant_conflict:
         match_scope = "ambiguous"
     elif weak_image_evidence:
         match_scope = "family"
