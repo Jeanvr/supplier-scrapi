@@ -192,6 +192,22 @@ def _score_row(reference: str, name: str, row: dict) -> int:
     return score
 
 
+def _rank_catalog_rows(reference: str, name: str, catalog_rows: list[dict]) -> list[tuple[int, dict]]:
+    ranked: list[tuple[int, dict]] = []
+    for row in catalog_rows:
+        ranked.append((_score_row(reference, name, row), row))
+
+    ranked.sort(
+        key=lambda item: (
+            item[0],
+            1 if clean_spaces(item[1].get("pdf_url", "")) else 0,
+            1 if clean_spaces(item[1].get("image_url", "")) else 0,
+        ),
+        reverse=True,
+    )
+    return ranked
+
+
 def _pdf_url_language_rank(pdf_url: str) -> int:
     low = clean_spaces(pdf_url).lower()
 
@@ -314,6 +330,82 @@ def _build_match_diagnostics(reference: str, name: str, matched_row: dict | None
     }
 
 
+def _build_image_diagnostics(
+    matched_row: dict | None,
+    ranked_rows: list[tuple[int, dict]],
+    match_diagnostics: dict,
+) -> dict:
+    image_url = clean_spaces((matched_row or {}).get("image_url", ""))
+    if not matched_row or not image_url:
+        return {
+            "image_suspect": "",
+            "image_review_reason": "",
+            "image_match_scope": "",
+        }
+
+    reasons: list[str] = []
+
+    ref_exact = match_diagnostics.get("match_ref_exact") == "yes"
+    if not ref_exact:
+        reasons.append("ref_not_exact")
+
+    try:
+        overlap = int(match_diagnostics.get("match_name_token_overlap") or "0")
+    except ValueError:
+        overlap = 0
+
+    if overlap == 0:
+        reasons.append("name_overlap_0")
+    elif overlap == 1:
+        reasons.append("name_overlap_1")
+
+    matched_ref_compact = _compact(clean_spaces(matched_row.get("supplier_ref", "")))
+    matched_name_compact = _compact(clean_spaces(matched_row.get("name", "")))
+    if matched_ref_compact and len(matched_ref_compact) <= 3:
+        reasons.append("generic_catalog_ref")
+    if matched_name_compact and len(matched_name_compact) <= 3:
+        reasons.append("generic_catalog_name")
+
+    best_score = ranked_rows[0][0] if ranked_rows else 0
+    close_competitor_count = 0
+    alternate_image_count = 0
+    for score, row in ranked_rows[1:]:
+        if best_score - score > 25:
+            break
+        close_competitor_count += 1
+        candidate_image = clean_spaces(row.get("image_url", ""))
+        if candidate_image and candidate_image != image_url:
+            alternate_image_count += 1
+
+    if close_competitor_count:
+        reasons.append("close_candidate_scores")
+    if alternate_image_count:
+        reasons.append("close_candidates_with_other_images")
+
+    has_generic_match = (
+        "generic_catalog_ref" in reasons
+        or "generic_catalog_name" in reasons
+    )
+    weak_image_evidence = (not ref_exact and overlap == 0) or has_generic_match
+    ambiguous_competition = alternate_image_count > 0 or (close_competitor_count > 0 and not ref_exact)
+
+    suspect = ""
+    if ambiguous_competition:
+        suspect = "yes"
+
+    match_scope = "sku"
+    if ambiguous_competition:
+        match_scope = "ambiguous"
+    elif weak_image_evidence:
+        match_scope = "family"
+
+    return {
+        "image_suspect": suspect,
+        "image_review_reason": "|".join(reasons),
+        "image_match_scope": match_scope,
+    }
+
+
 def _build_not_found(reference: str, name: str) -> dict:
     return {
         "resolver_status": "not_found",
@@ -335,6 +427,9 @@ def _build_not_found(reference: str, name: str) -> dict:
         "fallback_doc_type": "",
         "fallback_title": "",
         "fallback_pdf_url": "",
+        "image_suspect": "",
+        "image_review_reason": "",
+        "image_match_scope": "",
         "match_review_flag": "",
         "match_review_reasons": "",
         "match_ref_exact": "",
@@ -350,14 +445,9 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         result["notes"] = "calpeda_catalog_empty"
         return result
 
-    best_row = None
-    best_score = -1
-
-    for row in catalog_rows:
-        score = _score_row(reference, name, row)
-        if score > best_score:
-            best_score = score
-            best_row = row
+    ranked_rows = _rank_catalog_rows(reference, name, catalog_rows)
+    best_row = ranked_rows[0][1] if ranked_rows else None
+    best_score = ranked_rows[0][0] if ranked_rows else -1
 
     if best_row is None or best_score < 35:
         return _build_not_found(reference, name)
@@ -368,6 +458,7 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
     matched_ref = clean_spaces(best_row.get("supplier_ref", ""))
     source_url = clean_spaces(best_row.get("source_url", ""))
     diagnostics = _build_match_diagnostics(reference, name, best_row, best_score)
+    image_diagnostics = _build_image_diagnostics(best_row, ranked_rows, diagnostics)
 
     if pdf_url:
         resolver_status, preferred_pdf_kind = _classify_pdf_kind(pdf_url)
@@ -404,6 +495,9 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         "fallback_doc_type": "",
         "fallback_title": "",
         "fallback_pdf_url": "",
+        "image_suspect": image_diagnostics["image_suspect"],
+        "image_review_reason": image_diagnostics["image_review_reason"],
+        "image_match_scope": image_diagnostics["image_match_scope"],
         "match_review_flag": diagnostics["match_review_flag"],
         "match_review_reasons": diagnostics["match_review_reasons"],
         "match_ref_exact": diagnostics["match_ref_exact"],
@@ -413,6 +507,7 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
                 x for x in [
                     "calpeda_search_text_match",
                     f"match_review:{diagnostics['match_review_reasons']}" if diagnostics["match_review_flag"] else "",
+                    f"image_review:{image_diagnostics['image_review_reason']}" if image_diagnostics["image_suspect"] else "",
                 ] if x
             ]
         ),

@@ -28,6 +28,9 @@ DEFAULT_EMPTY_RESULT = {
     "fallback_doc_type": "",
     "fallback_title": "",
     "fallback_pdf_url": "",
+    "image_suspect": "",
+    "image_review_reason": "",
+    "image_match_scope": "",
     "notes": "fila sin referencia",
 }
 
