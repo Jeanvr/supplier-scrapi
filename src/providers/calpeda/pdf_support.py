@@ -22,6 +22,7 @@ MODEL_SIGNATURE_STOPWORDS = {
     "CALPEDA",
     "BOMBA",
     "BOMBES",
+    "MULTICELULAR",
     "SUBM",
     "SUBMERGIBLE",
     "SUBMERGIBLES",
@@ -60,6 +61,7 @@ MODEL_SIGNATURE_STOPWORDS = {
     "INOX",
     "AISI",
     "AUTOASPIRANT",
+    "JET",
     "CENTRIFUGA",
     "DRENA",
 }
@@ -129,6 +131,8 @@ def _is_viable_model_signature(candidate: str) -> bool:
         return False
     if any(token.endswith("CV") for token in tokens):
         return False
+    if len(tokens) > 2 and re.fullmatch(r"\d", tokens[-1]):
+        return False
 
     if (
         len(tokens) == 2
@@ -145,6 +149,30 @@ def _model_signature_sort_key(candidate: str) -> tuple[int, int, int]:
     separator_count = candidate.count("/") + candidate.count("-")
     digit_groups = len(re.findall(r"\d+", candidate))
     return separator_count, digit_groups, len(candidate)
+
+
+def _has_more_specific_model_variant(candidate: str, candidates: list[str]) -> bool:
+    prefix = clean_spaces(candidate)
+    if not prefix:
+        return False
+
+    for other in candidates:
+        if other == candidate or not other.startswith(prefix):
+            continue
+        if len(other) <= len(prefix):
+            continue
+        next_char = other[len(prefix)]
+        if next_char not in {" ", "-", "/"}:
+            continue
+        suffix = other[len(prefix):].strip(" -/")
+        if not suffix:
+            continue
+        if next_char in {"-", "/"} and re.search(r"[A-Z0-9]", suffix):
+            return True
+        if next_char == " " and (re.search(r"[/-]", suffix) or re.search(r"[A-Z]{2,}", suffix)):
+            return True
+
+    return False
 
 
 def _model_signature_candidates(name: str) -> list[str]:
@@ -331,9 +359,16 @@ def _check_model_signature_support(
     if not normalized_text:
         return "", "", error or "pdf_extract_error"
 
+    generic_match_found = False
     for candidate in candidates:
         if candidate in normalized_text:
+            if _has_more_specific_model_variant(candidate, candidates):
+                generic_match_found = True
+                continue
             return "yes", candidate, "model_signature_found"
+
+    if generic_match_found:
+        return "no", "", "model_signature_too_generic"
 
     return "no", "", "model_signature_not_found"
 
