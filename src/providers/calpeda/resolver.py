@@ -331,6 +331,8 @@ def _build_match_diagnostics(reference: str, name: str, matched_row: dict | None
 
 
 def _build_image_diagnostics(
+    reference: str,
+    name: str,
     matched_row: dict | None,
     ranked_rows: list[tuple[int, dict]],
     match_diagnostics: dict,
@@ -344,6 +346,8 @@ def _build_image_diagnostics(
         }
 
     reasons: list[str] = []
+    query_family_tokens = set(_tokens(f"{reference} {name}"))
+    matched_family_tokens = set(_tokens(f"{matched_row.get('supplier_ref', '')} {matched_row.get('name', '')}"))
 
     ref_exact = match_diagnostics.get("match_ref_exact") == "yes"
     if not ref_exact:
@@ -369,6 +373,7 @@ def _build_image_diagnostics(
     best_score = ranked_rows[0][0] if ranked_rows else 0
     close_competitor_count = 0
     alternate_image_count = 0
+    same_family_alternate_image_count = 0
     for score, row in ranked_rows[1:]:
         if best_score - score > 25:
             break
@@ -376,18 +381,32 @@ def _build_image_diagnostics(
         candidate_image = clean_spaces(row.get("image_url", ""))
         if candidate_image and candidate_image != image_url:
             alternate_image_count += 1
+            candidate_family_tokens = set(_tokens(f"{row.get('supplier_ref', '')} {row.get('name', '')}"))
+            if (
+                candidate_family_tokens
+                and matched_family_tokens
+                and query_family_tokens
+                and candidate_family_tokens & matched_family_tokens
+                and candidate_family_tokens & query_family_tokens
+            ):
+                same_family_alternate_image_count += 1
 
     if close_competitor_count:
         reasons.append("close_candidate_scores")
     if alternate_image_count:
         reasons.append("close_candidates_with_other_images")
+    same_family_close_candidates = same_family_alternate_image_count > 0
+    if same_family_close_candidates:
+        reasons.append("same_family_close_candidates")
 
     has_generic_match = (
         "generic_catalog_ref" in reasons
         or "generic_catalog_name" in reasons
     )
     weak_image_evidence = (not ref_exact and overlap == 0) or has_generic_match
-    ambiguous_competition = alternate_image_count > 0 or (close_competitor_count > 0 and not ref_exact)
+    ambiguous_competition = alternate_image_count > same_family_alternate_image_count
+    if not ambiguous_competition and close_competitor_count > 0 and not ref_exact:
+        ambiguous_competition = same_family_alternate_image_count == 0
 
     suspect = ""
     if ambiguous_competition:
@@ -397,6 +416,8 @@ def _build_image_diagnostics(
     if ambiguous_competition:
         match_scope = "ambiguous"
     elif weak_image_evidence:
+        match_scope = "family"
+    elif same_family_close_candidates and not ref_exact:
         match_scope = "family"
 
     return {
@@ -458,7 +479,7 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
     matched_ref = clean_spaces(best_row.get("supplier_ref", ""))
     source_url = clean_spaces(best_row.get("source_url", ""))
     diagnostics = _build_match_diagnostics(reference, name, best_row, best_score)
-    image_diagnostics = _build_image_diagnostics(best_row, ranked_rows, diagnostics)
+    image_diagnostics = _build_image_diagnostics(reference, name, best_row, ranked_rows, diagnostics)
 
     if pdf_url:
         resolver_status, preferred_pdf_kind = _classify_pdf_kind(pdf_url)
