@@ -1,6 +1,7 @@
 from __future__ import annotations
 from src.providers.bosch.media import attach_downloads
 from src.providers.calpeda.catalog import build_catalog_jsonl, load_catalog_rows
+from src.providers.calpeda.pdf_support import annotate_pdf_support
 from src.providers.calpeda.resolver import resolve_reference
 
 
@@ -30,7 +31,7 @@ PROVIDER = {
     ],
     "load_catalog_rows": load_catalog_rows,
     "resolve_reference": resolve_reference,
-    "postprocess_results": None,
+    "postprocess_results": annotate_pdf_support,
     "attach_downloads_fn": attach_downloads,
     "build_catalog_fn": build_catalog_jsonl,
 }
