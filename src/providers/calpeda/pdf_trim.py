@@ -103,6 +103,52 @@ def _find_visual_page_near_block(block: list[int], pages: list[str]) -> int | No
     return best_page
 
 
+def _is_reference_page_sufficient(page_text: str) -> bool:
+    """Evalúa si una página de referencia ya contiene contexto suficiente.
+    
+    Considera suficiente si tiene:
+    - Al menos una línea que parece título
+    - No demasiados códigos (máx 3)
+    - No menciones de precio
+    """
+    top_lines = _clean_top_lines(page_text)
+    if not top_lines:
+        return False
+    
+    code_count = len(set(CODE_RE.findall(page_text)))
+    has_precio = "PRECIO" in page_text.upper()
+    
+    # Debe tener al menos una línea de título
+    has_title = any(_is_title_like(line) for line in top_lines[:3])
+    
+    # No demasiados códigos, no precio
+    return has_title and code_count <= 3 and not has_precio
+
+
+def _build_final_pages_calpeda(reference_block: list[int], visual_page: int | None, pages: list[str]) -> list[int]:
+    """Construye lista final de páginas para Calpeda, con heurística mejorada.
+    
+    - Si el bloque de referencia es una sola página y es suficiente, devolver solo esa.
+    - Sino, incluir visual_page si existe, luego el bloque (máx 3).
+    """
+    # Si bloque de 1 página y suficiente, devolver solo esa
+    if len(reference_block) == 1:
+        ref_page_idx = reference_block[0] - 1  # 0-based
+        if ref_page_idx < len(pages) and _is_reference_page_sufficient(pages[ref_page_idx]):
+            return reference_block[:1]  # Solo esa página
+    
+    # Lógica estándar: incluir visual_page si existe, luego bloque
+    final_pages: list[int] = []
+    if visual_page is not None:
+        final_pages.append(visual_page)
+    
+    for page in reference_block:
+        if page not in final_pages:
+            final_pages.append(page)
+    
+    return final_pages[:3]
+
+
 
 
 
@@ -128,7 +174,7 @@ def trim_pdf_for_reference(pdf_path: Path, reference: str, output_pdf: Path) -> 
     reference_blocks = group_consecutive_pages(reference_pages)
     chosen_reference_block = pick_reference_block(reference_blocks)
     visual_page = _find_visual_page_near_block(chosen_reference_block, pages)
-    final_pages = build_final_pages(chosen_reference_block, visual_page)
+    final_pages = _build_final_pages_calpeda(chosen_reference_block, visual_page, pages)
 
     merge_selected_pages(pdf_path, final_pages, output_pdf)
 
