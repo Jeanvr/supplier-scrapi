@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 
 from src.core.excel_runner import run_excel_resolver
+from src.core.multi_provider_resolver import run_multi_provider_resolver
 from src.providers.loader import load_provider
 
 
@@ -10,13 +11,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Resolver multimarca: imagen + ficha técnica/catálogo usando la configuración del proveedor."
     )
-    parser.add_argument("--provider", required=True, help="Clave del proveedor. Ej: bosch")
+    parser.add_argument("--provider", required=True, help="Clave del proveedor. Ej: bosch, calpeda, auto (para multi-proveedor)")
     parser.add_argument("--excel", required=True, help="Ruta del Excel de entrada")
     parser.add_argument("--out", required=True, help="Ruta del Excel de salida")
     parser.add_argument("--catalog-jsonl", default="", help="Ruta del catálogo JSONL del proveedor")
     parser.add_argument("--download", action="store_true", help="Descarga imagen y PDF resueltos a disco")
     parser.add_argument("--images-dir", default="", help="Carpeta de descarga de imágenes resueltas")
     parser.add_argument("--pdfs-dir", default="", help="Carpeta de descarga de PDFs resueltos")
+    parser.add_argument("--provider-col", default=None, help="Nombre de columna con el proveedor (para modo auto)")
     return parser
 
 
@@ -29,7 +31,21 @@ def run_provider_doc_resolver(
     download: bool = False,
     images_dir: str = "",
     pdfs_dir: str = "",
+    provider_col: str | None = None,
 ) -> None:
+    # Modo multi-proveedor
+    if provider_key.lower() == "auto":
+        run_multi_provider_resolver(
+            excel=excel,
+            out=out,
+            provider_col=provider_col,
+            download=download,
+            images_base_dir=images_dir or "data/output/images",
+            pdfs_base_dir=pdfs_dir or "data/output/pdfs",
+        )
+        return
+
+    # Modo monoproveedor
     provider = load_provider(provider_key)
 
     run_excel_resolver(
@@ -59,6 +75,7 @@ def main() -> None:
         download=args.download,
         images_dir=args.images_dir,
         pdfs_dir=args.pdfs_dir,
+        provider_col=getattr(args, "provider_col", None),
     )
 
 
