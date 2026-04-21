@@ -9,7 +9,7 @@ from src.providers.bosch.resolver import resolve_reference
 PROVIDER = {
     "key": BRAND_KEY,
     "catalog_label": "bosch_catalog_rows",
-    "default_catalog_jsonl": "data/output/bosch_catalog.jsonl",
+    "default_catalog_jsonl": "data/catalogs/bosch_catalog.jsonl",
     "default_images_dir": DEFAULT_IMAGES_DIR,
     "default_pdfs_dir": DEFAULT_PDFS_DIR,
     "ref_aliases": [

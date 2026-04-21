@@ -8,7 +8,7 @@ from src.providers.calpeda.resolver import resolve_reference
 PROVIDER = {
     "key": "calpeda",
     "catalog_label": "calpeda_catalog_rows",
-    "default_catalog_jsonl": "data/output/calpeda_catalog.jsonl",
+    "default_catalog_jsonl": "data/catalogs/calpeda_catalog.jsonl",
     "default_images_dir": "data/output/images/calpeda_resolved",
     "default_pdfs_dir": "data/output/pdfs/calpeda_resolved",
     "ref_aliases": [

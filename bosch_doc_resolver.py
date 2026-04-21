@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--out", required=True, help="Ruta del Excel de salida")
     parser.add_argument(
         "--catalog-jsonl",
-        default="data/output/bosch_catalog.jsonl",
+        default="data/catalogs/bosch_catalog.jsonl",
         help="Ruta del catálogo JSONL Bosch ya scrapeado",
     )
     parser.add_argument(
@@ -78,7 +78,7 @@ def run_bosch_doc_resolver(
     *,
     excel: str,
     out: str,
-    catalog_jsonl: str = "data/output/bosch_catalog.jsonl",
+    catalog_jsonl: str = "data/catalogs/bosch_catalog.jsonl",
     download: bool = False,
     images_dir: str = DEFAULT_IMAGES_DIR,
     pdfs_dir: str = DEFAULT_PDFS_DIR,

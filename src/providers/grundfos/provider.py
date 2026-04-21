@@ -8,7 +8,7 @@ from src.providers.grundfos.resolver import resolve_reference
 PROVIDER = {
     "key": "grundfos",
     "catalog_label": "grundfos_catalog_rows",
-    "default_catalog_jsonl": "data/output/grundfos_catalog.jsonl",
+    "default_catalog_jsonl": "data/catalogs/grundfos_catalog.jsonl",
     "default_images_dir": "data/output/images/grundfos_resolved",
     "default_pdfs_dir": "data/output/pdfs/grundfos_resolved",
     "ref_aliases": [

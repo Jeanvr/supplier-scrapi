@@ -131,7 +131,7 @@ def main():
     parser.add_argument(
         "--jsonl",
         required=True,
-        help="Ruta del catálogo JSONL. Ej: data/output/bosch_catalog.jsonl",
+        help="Ruta del catálogo JSONL. Ej: data/catalogs/bosch_catalog.jsonl",
     )
     parser.add_argument(
         "--out",
