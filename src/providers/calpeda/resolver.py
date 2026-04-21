@@ -215,6 +215,7 @@ def _rank_catalog_rows(reference: str, name: str, catalog_rows: list[dict]) -> l
         key=lambda item: (
             item[0],
             1 if clean_spaces(item[1].get("pdf_url", "")) else 0,
+            _pdf_url_language_rank(item[1].get("pdf_url", "")),
             1 if clean_spaces(item[1].get("image_url", "")) else 0,
         ),
         reverse=True,
@@ -229,6 +230,7 @@ def _pdf_url_language_rank(pdf_url: str) -> int:
         "/es%20-%20spanish/",
         "/es%20-%20espanol/",
         "/es%20-%20español/",
+        "/es%20-%20espa%c3%b1ol/",
         "/spanish/",
         "/espanol/",
         "/español/",
@@ -479,6 +481,37 @@ def _build_not_found(reference: str, name: str) -> dict:
         "match_name_token_overlap": "",
         "notes": "calpeda_no_search_text_match",
     }
+
+
+def _build_skipped_non_calpeda(reference: str, name: str) -> dict:
+    result = _build_not_found(reference, name)
+    result["resolver_status"] = "skipped_non_calpeda_row"
+    result["notes"] = "calpeda_skipped_non_calpeda_row:name_without_calpeda"
+    return result
+
+
+def _looks_like_calpeda_row(reference: str, name: str, catalog_rows: list[dict]) -> bool:
+    name_norm = _normalize(name)
+    if "CALPEDA" in name_norm:
+        return True
+
+    if name_norm:
+        return False
+
+    ref_norm = _normalize(reference)
+    ref_compact = _compact(reference)
+    for row in catalog_rows:
+        row_ref = clean_spaces(row.get("supplier_ref", ""))
+        if not row_ref:
+            continue
+        if ref_norm and ref_norm == _normalize(row_ref):
+            return True
+        if ref_compact and ref_compact == _compact(row_ref):
+            return True
+
+    return False
+
+
 def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> dict:
     reference = clean_spaces(reference)
     name = clean_spaces(name)
@@ -487,6 +520,9 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         result = _build_not_found(reference, name)
         result["notes"] = "calpeda_catalog_empty"
         return result
+
+    if not _looks_like_calpeda_row(reference, name, catalog_rows):
+        return _build_skipped_non_calpeda(reference, name)
 
     ranked_rows = _rank_catalog_rows(reference, name, catalog_rows)
     best_row = ranked_rows[0][1] if ranked_rows else None
