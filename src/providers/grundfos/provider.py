@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from src.providers.bosch.media import attach_downloads
 from src.providers.grundfos.catalog import load_catalog_rows
+from src.providers.grundfos.downloads import attach_downloads
 from src.providers.grundfos.resolver import resolve_reference
 
 

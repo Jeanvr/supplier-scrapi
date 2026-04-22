@@ -4,6 +4,7 @@ import re
 import unicodedata
 
 from src.core.text import clean_spaces
+from src.providers.grundfos.catalog import classify_document_kind
 
 
 STOPWORDS = {
@@ -153,25 +154,13 @@ def _score_row(reference: str, name: str, row: dict) -> int:
 
 
 def _classify_pdf_kind(row: dict) -> str:
-    explicit_kind = clean_spaces(row.get("pdf_kind", "")).lower()
-    if explicit_kind in {"ficha_tecnica", "catalogo_producto"}:
-        return explicit_kind
-
-    pdf_url = clean_spaces(row.get("pdf_url", ""))
-    low = pdf_url.lower()
-    if not low:
-        return ""
-
-    if any(marker in low for marker in ("catalog", "catalogue", "brochure")):
-        return "catalogo_producto"
-
-    if "api.grundfos.com/literature/" in low:
-        return "ficha_tecnica"
-
-    if any(marker in low for marker in ("datasheet", "data-booklet", "databooklet", "technical")):
-        return "ficha_tecnica"
-
-    return ""
+    return classify_document_kind(
+        title=clean_spaces(row.get("pdf_title", "")),
+        url=clean_spaces(row.get("pdf_url", "")),
+        doc_type=clean_spaces(row.get("pdf_doc_type", "")),
+        kind=clean_spaces(row.get("pdf_kind", "")),
+        language=clean_spaces(row.get("pdf_language", "")),
+    )
 
 
 def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> dict:
@@ -198,6 +187,7 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
     image_url = clean_spaces(best_row.get("image_url", ""))
     pdf_url = clean_spaces(best_row.get("pdf_url", ""))
     pdf_kind = _classify_pdf_kind(best_row)
+    pdf_title = clean_spaces(best_row.get("pdf_title", "")) or matched_name
 
     resolver_status = "not_found"
     if pdf_kind == "ficha_tecnica" and pdf_url:
@@ -218,12 +208,12 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         "product_page_title": matched_name,
         "resolved_image_url": image_url,
         "preferred_pdf_kind": pdf_kind,
-        "preferred_pdf_label": matched_name if pdf_url else "",
+        "preferred_pdf_label": pdf_title if pdf_url else "",
         "preferred_pdf_url": pdf_url,
         "preferred_pdf_check_ok": "",
         "preferred_pdf_content_type": "",
         "preferred_doc_type": pdf_kind,
-        "preferred_title": matched_name if pdf_url else "",
+        "preferred_title": pdf_title if pdf_url else "",
         "fallback_doc_type": "",
         "fallback_title": "",
         "fallback_pdf_url": "",
