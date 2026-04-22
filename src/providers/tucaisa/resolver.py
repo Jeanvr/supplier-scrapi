@@ -4,25 +4,19 @@ import re
 import unicodedata
 
 from src.core.text import clean_spaces
-from src.providers.grundfos.catalog import classify_document_kind
+from src.providers.tucaisa.catalog import classify_document_kind
 
 
 STOPWORDS = {
-    "GRUNDFOS",
-    "BOMBA",
-    "BOMBAS",
-    "GRUP",
-    "PRESSIO",
-    "PRESSURE",
-    "MANAGER",
-    "AUTO",
-    "AUTOMATIC",
-    "CENTRIFUGA",
-    "CENTRIFUGAL",
-    "WITH",
-    "WITHOUT",
-    "AND",
-    "THE",
+    "TUCAI",
+    "SA",
+    "S",
+    "A",
+    "TMM",
+    "TAQ",
+    "REF",
+    "CATALOGO",
+    "CATÁLOGO",
 }
 
 
@@ -44,6 +38,8 @@ def _tokens(text: str) -> list[str]:
     for token in _normalize(text).split():
         if token in STOPWORDS:
             continue
+        if token.endswith("S") and len(token) > 4:
+            token = token[:-1]
         if len(token) >= 3 or any(ch.isdigit() for ch in token):
             result.append(token)
     return result
@@ -78,37 +74,6 @@ def _build_not_found(reference: str, name: str, note: str) -> dict:
     return _build_result(reference, name, status="not_found", notes=note)
 
 
-def _build_skipped_non_grundfos(reference: str, name: str) -> dict:
-    return _build_result(
-        reference,
-        name,
-        status="skipped_non_grundfos_row",
-        notes="grundfos_skipped_non_grundfos_row:name_without_grundfos",
-    )
-
-
-def _looks_like_grundfos_row(reference: str, name: str, catalog_rows: list[dict]) -> bool:
-    name_norm = _normalize(name)
-    if "GRUNDFOS" in name_norm:
-        return True
-
-    if name_norm:
-        return False
-
-    ref_norm = _normalize(reference)
-    ref_compact = _compact(reference)
-    for row in catalog_rows:
-        row_ref = clean_spaces(row.get("supplier_ref", ""))
-        if not row_ref:
-            continue
-        if ref_norm and ref_norm == _normalize(row_ref):
-            return True
-        if ref_compact and ref_compact == _compact(row_ref):
-            return True
-
-    return False
-
-
 def _search_blob(row: dict) -> str:
     return _normalize(
         " ".join(
@@ -130,48 +95,43 @@ def _score_row(reference: str, name: str, row: dict) -> int:
     row_ref = clean_spaces(row.get("supplier_ref", ""))
     row_ref_norm = _normalize(row_ref)
     row_ref_compact = _compact(row_ref)
+    name_norm = _normalize(name)
     name_compact = _compact(name)
     row_name = clean_spaces(row.get("name", ""))
+    row_name_norm = _normalize(row_name)
     row_name_compact = _compact(row_name)
 
     if ref_norm and row_ref_norm and ref_norm == row_ref_norm:
-        score += 400
+        score += 100
     if ref_compact and row_ref_compact and ref_compact == row_ref_compact:
-        score += 350
+        score += 80
+
+    if name_norm and row_name_norm and name_norm == row_name_norm:
+        score += 500
+    if name_compact and row_name_compact:
+        if name_compact == row_name_compact:
+            score += 450
+        elif row_name_compact in name_compact or name_compact in row_name_compact:
+            score += 180
 
     query_tokens = set(_tokens(f"{reference} {name}"))
     row_tokens = set(_tokens(_search_blob(row)))
-    score += len(query_tokens & row_tokens) * 20
+    score += len(query_tokens & row_tokens) * 25
 
-    if row_name_compact and len(row_name_compact) >= 4 and row_name_compact in name_compact:
-        score += 80
     if row.get("pdf_url"):
-        score += 3
+        score += 20
     if row.get("image_url"):
-        score += 1
+        score += 10
 
     return score
-
-
-def _classify_pdf_kind(row: dict) -> str:
-    return classify_document_kind(
-        title=clean_spaces(row.get("pdf_title", "")),
-        url=clean_spaces(row.get("pdf_url", "")),
-        doc_type=clean_spaces(row.get("pdf_doc_type", "")),
-        kind=clean_spaces(row.get("pdf_kind", "")),
-        language=clean_spaces(row.get("pdf_language", "")),
-    )
 
 
 def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> dict:
     reference = clean_spaces(reference)
     name = clean_spaces(name)
 
-    if not _looks_like_grundfos_row(reference, name, catalog_rows):
-        return _build_skipped_non_grundfos(reference, name)
-
     if not catalog_rows:
-        return _build_not_found(reference, name, "grundfos_catalog_empty")
+        return _build_not_found(reference, name, "tucaisa_catalog_empty")
 
     ranked_rows = sorted(
         ((_score_row(reference, name, row), row) for row in catalog_rows),
@@ -179,14 +139,14 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         reverse=True,
     )
     best_score, best_row = ranked_rows[0] if ranked_rows else (-1, None)
-    if best_row is None or best_score < 80:
-        return _build_not_found(reference, name, "grundfos_no_catalog_match")
+    if best_row is None or best_score < 160:
+        return _build_not_found(reference, name, "tucaisa_no_catalog_match")
 
     matched_name = clean_spaces(best_row.get("name", ""))
     matched_ref = clean_spaces(best_row.get("supplier_ref", ""))
     image_url = clean_spaces(best_row.get("image_url", ""))
     pdf_url = clean_spaces(best_row.get("pdf_url", ""))
-    pdf_kind = _classify_pdf_kind(best_row)
+    pdf_kind = classify_document_kind(best_row)
     pdf_title = clean_spaces(best_row.get("pdf_title", "")) or matched_name
     pdf_doc_type = clean_spaces(best_row.get("pdf_doc_type", "")) or pdf_kind
 
@@ -218,5 +178,5 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         "fallback_doc_type": "",
         "fallback_title": "",
         "fallback_pdf_url": "",
-        "notes": "grundfos_catalog_match",
+        "notes": "tucaisa_catalog_match",
     }

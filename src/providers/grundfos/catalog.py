@@ -10,29 +10,27 @@ from src.core.text import clean_spaces
 
 VALID_PDF_KINDS = {"ficha_tecnica", "catalogo_producto"}
 
-EXCLUDED_DOC_MARKERS = (
-    "installation and operating instructions",
-    "installing and operating instructions",
-    "instructions de installation",
-    "instrucciones de instalacion y funcionamiento",
-    "instrucciones de instalación y funcionamiento",
-    "instrucciones de mantenimiento",
-    "maintenance instructions",
-    "service instructions",
-    "service kit",
-    "safety instructions",
-    "quick guide",
-    "guia rapida",
-    "guía rápida",
+REJECTED_DOC_MARKERS = (
     "spare part",
     "spare parts",
     "repuestos",
-    "manual",
-    "mantenimiento",
-    "maintenance",
+    "service kit",
+    "service parts",
 )
 
 TECH_DOC_MARKERS = (
+    "product center print pdf",
+    "product centre print pdf",
+    "product center pdf",
+    "product centre pdf",
+    "print getpdf",
+    "print get pdf",
+    "ticketresults pdf",
+    "grundfos product centre",
+    "grundfos product center",
+    "grundfos caps",
+    "wincaps",
+    "document print engine",
     "data booklet",
     "data sheet",
     "datasheet",
@@ -40,9 +38,8 @@ TECH_DOC_MARKERS = (
     "technical catalog",
     "technical catalogue",
     "catalogo tecnico",
-    "catálogo técnico",
-    "catalogue technique",
     "catalogo tecnico",
+    "catálogo técnico",
     "datenheft",
     "ficha tecnica",
     "ficha técnica",
@@ -52,33 +49,96 @@ PRODUCT_DOC_MARKERS = (
     "product brochure",
     "brochure",
     "catalogo de producto",
-    "catálogo de producto",
     "catalogo producto",
+    "catálogo de producto",
     "catálogo producto",
-    "catalogue produit",
     "commercial catalog",
     "commercial catalogue",
     "catalogo comercial",
     "catálogo comercial",
 )
 
+MAINTENANCE_DOC_MARKERS = (
+    "instrucciones de mantenimiento",
+    "maintenance instructions",
+    "maintenance manual",
+    "service instructions",
+    "service manual",
+    "mantenimiento",
+)
+
+MANUAL_DOC_MARKERS = (
+    "installation and operating instructions",
+    "installing and operating instructions",
+    "instrucciones de instalacion y funcionamiento",
+    "instrucciones de instalación y funcionamiento",
+    "instrucciones de instalacion y operacion",
+    "instrucciones de instalación y operación",
+    "manual de instalacion",
+    "manual de instalación",
+)
+
+QUICK_GUIDE_MARKERS = (
+    "quick guide",
+    "guia rapida",
+    "guía rápida",
+)
+
 SPANISH_LANG_MARKERS = (
-    "español",
     "espanol",
-    "(es)",
     "spanish",
-    "/es/",
-    "es-es",
-    "es-mx",
+    "es mx",
+    "es es",
 )
 
 ENGLISH_LANG_MARKERS = (
     "english",
-    "(en)",
-    "en-gb",
-    "en-us",
-    "/en/",
+    "en gb",
+    "en us",
 )
+
+EXPLICIT_DOC_TYPE_MAP = {
+    "product center print pdf": "product_center_print_pdf",
+    "product centre print pdf": "product_center_print_pdf",
+    "product_center_print_pdf": "product_center_print_pdf",
+    "product center pdf": "product_center_print_pdf",
+    "product centre pdf": "product_center_print_pdf",
+    "product_center_pdf": "product_center_print_pdf",
+    "wincaps_product_sheet": "product_center_print_pdf",
+    "data booklet": "data_booklet",
+    "data_booklet": "data_booklet",
+    "data sheet": "data_sheet",
+    "data_sheet": "data_sheet",
+    "datasheet": "data_sheet",
+    "technical catalogue": "catalogo_tecnico",
+    "technical catalog": "catalogo_tecnico",
+    "technical_catalogue": "catalogo_tecnico",
+    "technical_catalog": "catalogo_tecnico",
+    "catalogo tecnico": "catalogo_tecnico",
+    "catálogo técnico": "catalogo_tecnico",
+    "catalogo_tecnico": "catalogo_tecnico",
+    "brochure": "catalogo_producto",
+    "product brochure": "catalogo_producto",
+    "catalogo producto": "catalogo_producto",
+    "catálogo producto": "catalogo_producto",
+    "catalogo de producto": "catalogo_producto",
+    "catálogo de producto": "catalogo_producto",
+    "catalogo comercial": "catalogo_producto",
+    "catálogo comercial": "catalogo_producto",
+    "catalogo_producto": "catalogo_producto",
+    "manual instalacion funcionamiento": "manual_instalacion_funcionamiento",
+    "manual de instalacion": "manual_instalacion_funcionamiento",
+    "manual de instalación": "manual_instalacion_funcionamiento",
+    "manual_instalacion_funcionamiento": "manual_instalacion_funcionamiento",
+    "manual mantenimiento": "manual_mantenimiento",
+    "manual de mantenimiento": "manual_mantenimiento",
+    "manual_mantenimiento": "manual_mantenimiento",
+    "instrucciones de mantenimiento": "manual_mantenimiento",
+    "guia rapida": "guia_rapida",
+    "guía rápida": "guia_rapida",
+    "quick guide": "guia_rapida",
+    "guia_rapida": "guia_rapida",
+}
 
 
 def _normalize_doc_text(value: object) -> str:
@@ -126,9 +186,9 @@ def detect_document_language(
     file_name: str = "",
 ) -> str:
     explicit_language = _normalize_doc_text(language)
-    if explicit_language in {"es", "spanish"}:
+    if explicit_language.startswith("es") or explicit_language == "spanish":
         return "es"
-    if explicit_language in {"en", "english"}:
+    if explicit_language.startswith("en") or explicit_language == "english":
         return "en"
 
     blob = _document_blob(
@@ -163,7 +223,63 @@ def is_excluded_document(
         language=language,
         file_name=file_name,
     )
-    return any(marker in blob for marker in EXCLUDED_DOC_MARKERS)
+    return any(marker in blob for marker in REJECTED_DOC_MARKERS)
+
+
+def detect_document_type(
+    *,
+    title: str = "",
+    url: str = "",
+    doc_type: str = "",
+    kind: str = "",
+    language: str = "",
+    file_name: str = "",
+) -> str:
+    normalized_doc_type = _normalize_doc_text(doc_type)
+    if normalized_doc_type in EXPLICIT_DOC_TYPE_MAP:
+        return EXPLICIT_DOC_TYPE_MAP[normalized_doc_type]
+
+    blob = _document_blob(
+        title=title,
+        url=url,
+        doc_type=doc_type,
+        kind=kind,
+        language=language,
+        file_name=file_name,
+    )
+    if any(marker in blob for marker in TECH_DOC_MARKERS):
+        if any(
+            marker in blob
+            for marker in (
+                "product center print pdf",
+                "product centre print pdf",
+                "product center pdf",
+                "product centre pdf",
+                "print getpdf",
+                "print get pdf",
+                "ticketresults pdf",
+                "grundfos product centre",
+                "grundfos product center",
+                "grundfos caps",
+                "wincaps",
+                "document print engine",
+            )
+        ):
+            return "product_center_print_pdf"
+        if "data booklet" in blob:
+            return "data_booklet"
+        if "data sheet" in blob or "datasheet" in blob:
+            return "data_sheet"
+        return "catalogo_tecnico"
+    if any(marker in blob for marker in PRODUCT_DOC_MARKERS):
+        return "catalogo_producto"
+    if any(marker in blob for marker in MAINTENANCE_DOC_MARKERS):
+        return "manual_mantenimiento"
+    if any(marker in blob for marker in MANUAL_DOC_MARKERS):
+        return "manual_instalacion_funcionamiento"
+    if any(marker in blob for marker in QUICK_GUIDE_MARKERS):
+        return "guia_rapida"
+    return ""
 
 
 def classify_document_kind(
@@ -185,11 +301,7 @@ def classify_document_kind(
     ):
         return ""
 
-    explicit_kind = clean_spaces(kind).lower()
-    if explicit_kind in VALID_PDF_KINDS:
-        return explicit_kind
-
-    blob = _document_blob(
+    detected_type = detect_document_type(
         title=title,
         url=url,
         doc_type=doc_type,
@@ -197,10 +309,24 @@ def classify_document_kind(
         language=language,
         file_name=file_name,
     )
-    if any(marker in blob for marker in TECH_DOC_MARKERS):
+    if detected_type in {
+        "product_center_print_pdf",
+        "data_booklet",
+        "data_sheet",
+        "catalogo_tecnico",
+    }:
         return "ficha_tecnica"
-    if any(marker in blob for marker in PRODUCT_DOC_MARKERS):
+    if detected_type in {
+        "catalogo_producto",
+        "manual_instalacion_funcionamiento",
+        "manual_mantenimiento",
+        "guia_rapida",
+    }:
         return "catalogo_producto"
+
+    explicit_kind = clean_spaces(kind).lower()
+    if explicit_kind in VALID_PDF_KINDS:
+        return explicit_kind
     return ""
 
 
@@ -235,7 +361,7 @@ def score_document(
     ):
         return -1000
 
-    resolved_kind = classify_document_kind(
+    detected_type = detect_document_type(
         title=title,
         url=url,
         doc_type=doc_type,
@@ -253,28 +379,25 @@ def score_document(
     )
 
     score = 0
-    if resolved_kind == "ficha_tecnica":
-        score += 300
-    elif resolved_kind == "catalogo_producto":
-        score += 200
-
     if resolved_language == "es":
-        score += 40
+        score += 2000
     elif resolved_language == "en":
-        score += 20
+        score += 800
 
-    blob = _document_blob(
-        title=title,
-        url=url,
-        doc_type=doc_type,
-        kind=kind,
-        language=language,
-        file_name=file_name,
-    )
-    if "data booklet" in blob or "data sheet" in blob:
-        score += 25
-    elif "catalogo tecnico" in blob or "catálogo técnico" in blob or "technical data" in blob:
-        score += 20
+    if detected_type == "product_center_print_pdf":
+        score += 2500
+    elif detected_type in {"data_booklet", "data_sheet", "catalogo_tecnico"}:
+        score += 1800
+    elif detected_type == "catalogo_producto":
+        score += 1400
+    elif detected_type == "manual_instalacion_funcionamiento":
+        score += 400
+    elif detected_type == "manual_mantenimiento":
+        score += 300
+    elif detected_type == "guia_rapida":
+        score += 200
+    else:
+        score += 10
 
     return score
 
@@ -319,7 +442,7 @@ def _normalize_catalog_row(row: dict) -> dict:
             best_score = score
             best_candidate = candidate
 
-    if best_candidate is None or best_score < 180:
+    if best_candidate is None or best_score < 120:
         normalized_row["pdf_url"] = ""
         normalized_row["pdf_kind"] = ""
         normalized_row["pdf_title"] = ""
@@ -331,7 +454,7 @@ def _normalize_catalog_row(row: dict) -> dict:
     pdf_title = clean_spaces(best_candidate.get("title", ""))
     pdf_doc_type = clean_spaces(best_candidate.get("doc_type", ""))
     pdf_language = clean_spaces(best_candidate.get("language", ""))
-    pdf_kind = classify_document_kind(
+    detected_type = detect_document_type(
         title=pdf_title,
         url=pdf_url,
         doc_type=pdf_doc_type,
@@ -339,14 +462,22 @@ def _normalize_catalog_row(row: dict) -> dict:
         language=pdf_language,
         file_name=Path(pdf_url).name,
     )
+    pdf_kind = classify_document_kind(
+        title=pdf_title,
+        url=pdf_url,
+        doc_type=pdf_doc_type or detected_type,
+        kind=clean_spaces(best_candidate.get("kind", "")),
+        language=pdf_language,
+        file_name=Path(pdf_url).name,
+    )
 
     normalized_row["pdf_url"] = pdf_url
     normalized_row["pdf_title"] = pdf_title
-    normalized_row["pdf_doc_type"] = pdf_doc_type
+    normalized_row["pdf_doc_type"] = pdf_doc_type or detected_type
     normalized_row["pdf_language"] = pdf_language or detect_document_language(
         title=pdf_title,
         url=pdf_url,
-        doc_type=pdf_doc_type,
+        doc_type=pdf_doc_type or detected_type,
         kind=pdf_kind,
         file_name=Path(pdf_url).name,
     )
