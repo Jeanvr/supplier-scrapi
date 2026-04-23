@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.providers.simple_media import attach_downloads
 from src.providers.nordair.catalog import load_catalog_rows
 from src.providers.nordair.resolver import resolve_reference
 
@@ -29,4 +30,5 @@ PROVIDER = {
     ],
     "load_catalog_rows": load_catalog_rows,
     "resolve_reference": resolve_reference,
+    "attach_downloads_fn": attach_downloads,
 }

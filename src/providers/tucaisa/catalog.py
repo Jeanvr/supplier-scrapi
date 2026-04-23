@@ -7,6 +7,10 @@ from src.core.text import clean_spaces
 
 
 VALID_PDF_KINDS = {"ficha_tecnica", "catalogo_producto"}
+TAQ_PREMIUM_IMAGE_URL = "https://www.tucai.com/wp-content/uploads/2024/04/taq-premium-2.png"
+C850_PREMIUM_IMAGE_URL = "https://www.tucai.com/wp-content/uploads/2023/06/C-850-PREMIUM.png"
+C511_IMAGE_URL = "https://www.tucai.com/wp-content/uploads/2023/06/C-511.png"
+L400_IMAGE_URL = "https://www.tucai.com/wp-content/uploads/2023/06/L400-1.png"
 
 
 def classify_document_kind(row: dict) -> str:
@@ -29,6 +33,15 @@ def _normalize_catalog_row(row: dict) -> dict:
     normalized_row["name"] = clean_spaces(normalized_row.get("name", ""))
     normalized_row["source_url"] = clean_spaces(normalized_row.get("source_url", ""))
     normalized_row["image_url"] = clean_spaces(normalized_row.get("image_url", ""))
+    if not normalized_row["image_url"]:
+        if "/producto/taq-premium/" in normalized_row["source_url"]:
+            normalized_row["image_url"] = TAQ_PREMIUM_IMAGE_URL
+        elif "/producto/c850-premium/" in normalized_row["source_url"]:
+            normalized_row["image_url"] = C850_PREMIUM_IMAGE_URL
+        elif "/producto/c511/" in normalized_row["source_url"]:
+            normalized_row["image_url"] = C511_IMAGE_URL
+        elif "/producto/tmm-l-400/" in normalized_row["source_url"]:
+            normalized_row["image_url"] = L400_IMAGE_URL
     normalized_row["pdf_url"] = clean_spaces(normalized_row.get("pdf_url", ""))
     normalized_row["pdf_title"] = clean_spaces(normalized_row.get("pdf_title", ""))
     normalized_row["pdf_language"] = clean_spaces(normalized_row.get("pdf_language", ""))

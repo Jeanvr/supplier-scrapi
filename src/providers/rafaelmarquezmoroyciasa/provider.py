@@ -1,16 +1,16 @@
 from __future__ import annotations
 
+from src.providers.rafaelmarquezmoroyciasa.catalog import load_catalog_rows
+from src.providers.rafaelmarquezmoroyciasa.resolver import resolve_reference
 from src.providers.simple_media import attach_downloads
-from src.providers.aquaramvalvesfittingsslch.catalog import load_catalog_rows
-from src.providers.aquaramvalvesfittingsslch.resolver import resolve_reference
 
 
 PROVIDER = {
-    "key": "aquaramvalvesfittingsslch",
-    "catalog_label": "aquaramvalvesfittingsslch_catalog_rows",
-    "default_catalog_jsonl": "data/catalogs/aquaramvalvesfittingsslch_catalog.jsonl",
-    "default_images_dir": "data/output/images/aquaramvalvesfittingsslch_resolved",
-    "default_pdfs_dir": "data/output/pdfs/aquaramvalvesfittingsslch_resolved",
+    "key": "rafaelmarquezmoroyciasa",
+    "catalog_label": "rafaelmarquezmoroyciasa_catalog_rows",
+    "default_catalog_jsonl": "data/catalogs/rafaelmarquezmoroyciasa_catalog.jsonl",
+    "default_images_dir": "data/output/images/rafaelmarquezmoroyciasa_resolved",
+    "default_pdfs_dir": "data/output/pdfs/rafaelmarquezmoroyciasa_resolved",
     "ref_aliases": [
         "referencia",
         "ref",

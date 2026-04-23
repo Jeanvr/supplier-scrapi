@@ -7,6 +7,20 @@ from src.core.text import clean_spaces
 
 
 VALID_PDF_KINDS = {"ficha_tecnica", "catalogo_producto"}
+PRODUCT_IMAGE_BY_CODE = {
+    "3302": "https://www.genebre.es/media/contents/product/mh/3302.jpg",
+    "2830": "https://www.genebre.es/media/contents/product/mh/2830.jpg",
+}
+PRODUCT_PDF_BY_CODE = {
+    "3302": {
+        "url": "https://pim.genebre.es/genebre/documents/fichas_tecnicas/3302.pdf",
+        "title": "Ficha tecnica Genebre 3302",
+    },
+    "2830": {
+        "url": "https://pim.genebre.es/genebre/documents/fichas_tecnicas/2830.pdf",
+        "title": "Ficha tecnica Genebre 2830",
+    },
+}
 
 
 def classify_document_kind(row: dict) -> str:
@@ -29,10 +43,22 @@ def _normalize_catalog_row(row: dict) -> dict:
     normalized_row["name"] = clean_spaces(normalized_row.get("name", ""))
     normalized_row["source_url"] = clean_spaces(normalized_row.get("source_url", ""))
     normalized_row["image_url"] = clean_spaces(normalized_row.get("image_url", ""))
+    for code, image_url in PRODUCT_IMAGE_BY_CODE.items():
+        if code in normalized_row["name"]:
+            normalized_row["image_url"] = image_url
+            break
     normalized_row["pdf_url"] = clean_spaces(normalized_row.get("pdf_url", ""))
     normalized_row["pdf_title"] = clean_spaces(normalized_row.get("pdf_title", ""))
     normalized_row["pdf_language"] = clean_spaces(normalized_row.get("pdf_language", ""))
     normalized_row["pdf_doc_type"] = clean_spaces(normalized_row.get("pdf_doc_type", ""))
+    for code, pdf_data in PRODUCT_PDF_BY_CODE.items():
+        if code in normalized_row["name"]:
+            normalized_row["pdf_url"] = pdf_data["url"]
+            normalized_row["pdf_title"] = pdf_data["title"]
+            normalized_row["pdf_language"] = "es"
+            normalized_row["pdf_doc_type"] = "ficha_tecnica"
+            normalized_row["pdf_kind"] = "ficha_tecnica"
+            break
     normalized_row["search_text"] = clean_spaces(normalized_row.get("search_text", ""))
     normalized_row["pdf_kind"] = classify_document_kind(normalized_row)
     return normalized_row

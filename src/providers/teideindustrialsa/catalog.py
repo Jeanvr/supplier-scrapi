@@ -7,6 +7,8 @@ from src.core.text import clean_spaces
 
 
 VALID_PDF_KINDS = {"ficha_tecnica", "catalogo_producto"}
+TEIDE_HTTPS_BASE = "https://www.teideindustrial.com/"
+TEIDE_HTTP_BASE = "http://www.teideindustrial.com/"
 
 
 def classify_document_kind(row: dict) -> str:
@@ -29,6 +31,8 @@ def _normalize_catalog_row(row: dict) -> dict:
     normalized_row["name"] = clean_spaces(normalized_row.get("name", ""))
     normalized_row["source_url"] = clean_spaces(normalized_row.get("source_url", ""))
     normalized_row["image_url"] = clean_spaces(normalized_row.get("image_url", ""))
+    if normalized_row["image_url"].startswith(TEIDE_HTTPS_BASE):
+        normalized_row["image_url"] = TEIDE_HTTP_BASE + normalized_row["image_url"][len(TEIDE_HTTPS_BASE) :]
     normalized_row["pdf_url"] = clean_spaces(normalized_row.get("pdf_url", ""))
     normalized_row["pdf_title"] = clean_spaces(normalized_row.get("pdf_title", ""))
     normalized_row["pdf_language"] = clean_spaces(normalized_row.get("pdf_language", ""))
@@ -50,4 +54,3 @@ def load_catalog_rows(catalog_path: Path) -> list[dict]:
         rows.append(_normalize_catalog_row(json.loads(line)))
 
     return rows
-

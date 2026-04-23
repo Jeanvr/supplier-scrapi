@@ -1,16 +1,16 @@
 from __future__ import annotations
 
+from src.providers.metalgrupsa.catalog import load_catalog_rows
+from src.providers.metalgrupsa.resolver import resolve_reference
 from src.providers.simple_media import attach_downloads
-from src.providers.aquaramvalvesfittingsslch.catalog import load_catalog_rows
-from src.providers.aquaramvalvesfittingsslch.resolver import resolve_reference
 
 
 PROVIDER = {
-    "key": "aquaramvalvesfittingsslch",
-    "catalog_label": "aquaramvalvesfittingsslch_catalog_rows",
-    "default_catalog_jsonl": "data/catalogs/aquaramvalvesfittingsslch_catalog.jsonl",
-    "default_images_dir": "data/output/images/aquaramvalvesfittingsslch_resolved",
-    "default_pdfs_dir": "data/output/pdfs/aquaramvalvesfittingsslch_resolved",
+    "key": "metalgrupsa",
+    "catalog_label": "metalgrupsa_catalog_rows",
+    "default_catalog_jsonl": "data/catalogs/metalgrupsa_catalog.jsonl",
+    "default_images_dir": "data/output/images/metalgrupsa_resolved",
+    "default_pdfs_dir": "data/output/pdfs/metalgrupsa_resolved",
     "ref_aliases": [
         "referencia",
         "ref",

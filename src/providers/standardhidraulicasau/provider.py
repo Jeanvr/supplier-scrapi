@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 from src.providers.simple_media import attach_downloads
-from src.providers.aquaramvalvesfittingsslch.catalog import load_catalog_rows
-from src.providers.aquaramvalvesfittingsslch.resolver import resolve_reference
+from src.providers.standardhidraulicasau.catalog import load_catalog_rows
+from src.providers.standardhidraulicasau.resolver import resolve_reference
 
 
 PROVIDER = {
-    "key": "aquaramvalvesfittingsslch",
-    "catalog_label": "aquaramvalvesfittingsslch_catalog_rows",
-    "default_catalog_jsonl": "data/catalogs/aquaramvalvesfittingsslch_catalog.jsonl",
-    "default_images_dir": "data/output/images/aquaramvalvesfittingsslch_resolved",
-    "default_pdfs_dir": "data/output/pdfs/aquaramvalvesfittingsslch_resolved",
+    "key": "standardhidraulicasau",
+    "catalog_label": "standardhidraulicasau_catalog_rows",
+    "default_catalog_jsonl": "data/catalogs/standardhidraulicasau_catalog.jsonl",
+    "default_images_dir": "data/output/images/standardhidraulicasau_resolved",
+    "default_pdfs_dir": "data/output/pdfs/standardhidraulicasau_resolved",
     "ref_aliases": [
         "referencia",
         "ref",

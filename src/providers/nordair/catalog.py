@@ -7,6 +7,7 @@ from src.core.text import clean_spaces
 
 
 VALID_PDF_KINDS = {"ficha_tecnica", "catalogo_producto"}
+NORDAIR_ELECTROVALVE_IMAGE_URL = "https://comercio.nordair.es/c/232-category_big/electrovalvulas-para-fluidos.jpg"
 
 
 def classify_document_kind(row: dict) -> str:
@@ -29,6 +30,8 @@ def _normalize_catalog_row(row: dict) -> dict:
     normalized_row["name"] = clean_spaces(normalized_row.get("name", ""))
     normalized_row["source_url"] = clean_spaces(normalized_row.get("source_url", ""))
     normalized_row["image_url"] = clean_spaces(normalized_row.get("image_url", ""))
+    if not normalized_row["image_url"] and "ELECTROVALVULA" in normalized_row["name"].upper():
+        normalized_row["image_url"] = NORDAIR_ELECTROVALVE_IMAGE_URL
     normalized_row["pdf_url"] = clean_spaces(normalized_row.get("pdf_url", ""))
     normalized_row["pdf_title"] = clean_spaces(normalized_row.get("pdf_title", ""))
     normalized_row["pdf_language"] = clean_spaces(normalized_row.get("pdf_language", ""))
