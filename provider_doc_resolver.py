@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
+from src.core.catalog_fallback_trimmer import trim_catalog_fallbacks_in_excel
 from src.core.excel_runner import run_excel_resolver
 from src.core.multi_provider_resolver import run_multi_provider_resolver
 from src.providers.loader import load_provider
@@ -43,6 +45,10 @@ def run_provider_doc_resolver(
             images_base_dir=images_dir or "data/output/images",
             pdfs_base_dir=pdfs_dir or "data/output/pdfs",
         )
+        if download:
+            trimmed_count = trim_catalog_fallbacks_in_excel(Path(out))
+            if trimmed_count:
+                print(f"  catalog_pdfs_recortados: {trimmed_count}")
         return
 
     # Modo monoproveedor
@@ -63,6 +69,10 @@ def run_provider_doc_resolver(
         pdfs_dir=pdfs_dir or provider["default_pdfs_dir"],
         catalog_label=provider.get("catalog_label", f"{provider['key']}_catalog_rows"),
     )
+    if download:
+        trimmed_count = trim_catalog_fallbacks_in_excel(Path(out), provider_key=provider_key)
+        if trimmed_count:
+            print(f"  catalog_pdfs_recortados: {trimmed_count}")
 
 
 def main() -> None:
