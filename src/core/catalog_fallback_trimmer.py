@@ -18,6 +18,7 @@ CATALOG_PAGE_THRESHOLD = 20
 MAX_REFERENCE_PAGES = 2
 TRIM_ENABLED_PROVIDERS = {"tucaisa", "genebresa"}
 MODEL_TOKEN_RE = re.compile(r"\b[A-Z]{1,5}-\d{2,5}[A-Z]?\b")
+GENEBRE_MODEL_TOKEN_RE = re.compile(r"\b\d{4}[A-Z]?\b")
 PRODUCT_CONTEXT_WORDS = {
     "APLICACIONES",
     "MODELO",
@@ -56,6 +57,7 @@ COMMON_NAME_TOKENS = {
     "MANETA",
     "POTES",
 }
+GENEBRE_COMMON_NAME_TOKENS = {"GE", "GENEBRE", "GENEBRESA"}
 
 
 def _normalize_text(text: str) -> str:
@@ -65,21 +67,47 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _strong_model_tokens(*values: str) -> list[str]:
+def _model_tokens(text: str, *, provider_key: str = "") -> list[str]:
+    tokens: list[str] = []
+    seen: set[str] = set()
+    patterns = [MODEL_TOKEN_RE]
+    if provider_key == "genebresa":
+        patterns.append(GENEBRE_MODEL_TOKEN_RE)
+
+    normalized = _normalize_text(text)
+    for pattern in patterns:
+        for match in pattern.findall(normalized):
+            if match in seen:
+                continue
+            seen.add(match)
+            tokens.append(match)
+    return tokens
+
+
+def _strong_model_tokens(*values: str, provider_key: str = "") -> list[str]:
     tokens: list[str] = []
     seen: set[str] = set()
     for value in values:
-        for match in MODEL_TOKEN_RE.findall(_normalize_text(value)):
+        for match in _model_tokens(value, provider_key=provider_key):
             if match not in seen:
                 seen.add(match)
                 tokens.append(match)
     return tokens
 
 
-def _name_tokens(name: str) -> set[str]:
+def _name_tokens(name: str, *, provider_key: str = "") -> set[str]:
     tokens: set[str] = set()
+    common_tokens = COMMON_NAME_TOKENS
+    if provider_key == "genebresa":
+        common_tokens = GENEBRE_COMMON_NAME_TOKENS
+
     for token in re.findall(r"[A-Z0-9]+", _normalize_text(name)):
-        if token in COMMON_NAME_TOKENS or len(token) < 3:
+        if token in common_tokens:
+            continue
+        if provider_key == "genebresa":
+            if token.isdigit() or len(token) < 3:
+                continue
+        elif len(token) < 3:
             continue
         tokens.add(token)
     return tokens
@@ -90,14 +118,15 @@ def _is_bad_page(page_text: str) -> bool:
     return any(marker in page_norm for marker in BAD_PAGE_MARKERS)
 
 
-def _page_score(page_text: str, *, model_token: str, name_tokens: set[str]) -> int:
+def _page_score(page_text: str, *, model_token: str, name_tokens: set[str], provider_key: str = "") -> int:
     page_norm = _normalize_text(page_text)
     if model_token not in page_norm or _is_bad_page(page_text):
         return -1000
 
+    page_tokens = set(re.findall(r"[A-Z0-9]+", page_norm))
     model_counts = {
         token: page_norm.count(token)
-        for token in set(MODEL_TOKEN_RE.findall(page_norm))
+        for token in set(_model_tokens(page_norm, provider_key=provider_key))
     }
     model_count = model_counts.get(model_token, 0)
     if any(count > model_count for token, count in model_counts.items() if token != model_token):
@@ -112,7 +141,11 @@ def _page_score(page_text: str, *, model_token: str, name_tokens: set[str]) -> i
         if word in page_norm:
             score += 4
 
-    score += len(name_tokens & set(re.findall(r"[A-Z0-9]+", page_norm))) * 2
+    matched_name_tokens = name_tokens & page_tokens
+    if provider_key == "genebresa" and GENEBRE_MODEL_TOKEN_RE.fullmatch(model_token) and len(matched_name_tokens) < 2:
+        return -1000
+
+    score += len(matched_name_tokens) * 2
 
     if "MODELO" in page_norm and ("RACORERIA" in page_norm or "RACORERÍA" in page_norm):
         score += 8
@@ -123,6 +156,7 @@ def _page_score(page_text: str, *, model_token: str, name_tokens: set[str]) -> i
 def _choose_reference_pages(
     pages: list[str],
     *,
+    provider_key: str,
     reference: str,
     code: str,
     name: str,
@@ -135,11 +169,19 @@ def _choose_reference_pages(
             return block[:MAX_REFERENCE_PAGES], clean_spaces(exact_value)
 
     name_for_tokens = matched_name or name
-    name_tokens = _name_tokens(name_for_tokens)
-    for model_token in _strong_model_tokens(name_for_tokens, name):
+    name_tokens = _name_tokens(name_for_tokens, provider_key=provider_key)
+    for model_token in _strong_model_tokens(name_for_tokens, name, provider_key=provider_key):
         model_pages = find_reference_pages(model_token, pages)
         scored_pages = [
-            (page_number, _page_score(pages[page_number - 1], model_token=model_token, name_tokens=name_tokens))
+            (
+                page_number,
+                _page_score(
+                    pages[page_number - 1],
+                    model_token=model_token,
+                    name_tokens=name_tokens,
+                    provider_key=provider_key,
+                ),
+            )
             for page_number in model_pages
         ]
         good_pages = [page for page, score in scored_pages if score >= 36]
@@ -147,7 +189,21 @@ def _choose_reference_pages(
             continue
 
         blocks = group_consecutive_pages(good_pages)
-        blocks.sort(key=lambda block: (-sum(_page_score(pages[p - 1], model_token=model_token, name_tokens=name_tokens) for p in block), len(block), block[0]))
+        blocks.sort(
+            key=lambda block: (
+                -sum(
+                    _page_score(
+                        pages[p - 1],
+                        model_token=model_token,
+                        name_tokens=name_tokens,
+                        provider_key=provider_key,
+                    )
+                    for p in block
+                ),
+                len(block),
+                block[0],
+            )
+        )
         return blocks[0][:MAX_REFERENCE_PAGES], model_token
 
     return [], ""
@@ -212,6 +268,7 @@ def trim_catalog_fallbacks_in_excel(excel_path: Path, *, provider_key: str | Non
 
         reference_pages, matched_token = _choose_reference_pages(
             pages,
+            provider_key=row_provider,
             reference=clean_spaces(row.get("referencia", "")),
             code=clean_spaces(row.get("codigo", "")),
             name=clean_spaces(row.get("nombre", "")),
