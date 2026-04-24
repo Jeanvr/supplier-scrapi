@@ -144,6 +144,7 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
 
     matched_name = clean_spaces(best_row.get("name", ""))
     matched_ref = clean_spaces(best_row.get("supplier_ref", ""))
+    image_url = clean_spaces(best_row.get("image_url", ""))
     pdf_url = clean_spaces(best_row.get("pdf_url", ""))
     pdf_kind = classify_document_kind(best_row)
     pdf_title = clean_spaces(best_row.get("pdf_title", "")) or matched_name
@@ -154,6 +155,8 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         resolver_status = "resolved_ficha_tecnica"
     elif pdf_kind == "catalogo_producto" and pdf_url:
         resolver_status = "resolved_catalogo_producto"
+    elif image_url:
+        resolver_status = "resolved_image_only"
 
     return {
         "resolver_status": resolver_status,
@@ -164,7 +167,7 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         "matched_catalog_score": str(best_score),
         "product_page_url": clean_spaces(best_row.get("source_url", "")),
         "product_page_title": matched_name,
-        "resolved_image_url": "",
+        "resolved_image_url": image_url,
         "preferred_pdf_kind": pdf_kind,
         "preferred_pdf_label": pdf_title if pdf_url else "",
         "preferred_pdf_url": pdf_url,
