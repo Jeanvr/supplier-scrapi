@@ -39,6 +39,15 @@ def _require_binary(name: str) -> str:
     return path
 
 
+def _ghostscript_cmd() -> str:
+    return (
+        shutil.which("gs")
+        or shutil.which("gswin64c")
+        or shutil.which("gswin32c")
+        or "gs"
+    )
+
+
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     """Ejecuta un comando en la shell."""
     return subprocess.run(cmd, check=True, capture_output=True, text=True)
@@ -179,13 +188,13 @@ def merge_selected_pages(pdf_path: Path, selected_pages: list[int], output_pdf: 
         selected_pages: Lista de números de página a incluir (1-indexed).
         output_pdf: Ruta del PDF de salida.
     """
-    _require_binary("gs")
+    ghostscript_cmd = _require_binary(_ghostscript_cmd())
 
     output_pdf.parent.mkdir(parents=True, exist_ok=True)
     page_list = ",".join(str(page) for page in selected_pages)
     _run(
         [
-            "gs",
+            ghostscript_cmd,
             "-sDEVICE=pdfwrite",
             "-dNOPAUSE",
             "-dBATCH",
