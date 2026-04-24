@@ -18,6 +18,24 @@ STOPWORDS = {
     "CATÁLOGO",
 }
 
+GENERIC_VALVE_IMAGE_MARKERS = (
+    "bodegon_valvulasm-h",
+)
+
+
+def _append_note(notes: str, note: str) -> str:
+    notes = clean_spaces(notes)
+    if not notes:
+        return note
+    if note in notes:
+        return notes
+    return f"{notes} | {note}"
+
+
+def _is_generic_valve_family_image(image_url: str) -> bool:
+    image_url = clean_spaces(image_url).casefold()
+    return any(marker in image_url for marker in GENERIC_VALVE_IMAGE_MARKERS)
+
 
 def _normalize(text: str) -> str:
     text = clean_spaces(text)
@@ -185,7 +203,12 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         return _build_not_found(reference, name, "inoxpressa_ambiguous_reference_requires_name")
 
     matched_ref = clean_spaces(best_row.get("supplier_ref", ""))
-    image_url = clean_spaces(best_row.get("image_url", ""))
+    raw_image_url = clean_spaces(best_row.get("image_url", ""))
+    image_url = raw_image_url
+    notes = "inoxpressa_catalog_match"
+    if _is_generic_valve_family_image(raw_image_url):
+        image_url = ""
+        notes = _append_note(notes, "image:suppressed_generic_valve_family")
     pdf_url = clean_spaces(best_row.get("pdf_url", ""))
     pdf_kind = classify_document_kind(best_row)
     pdf_title = clean_spaces(best_row.get("pdf_title", "")) or matched_name
@@ -219,5 +242,5 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         "fallback_doc_type": "",
         "fallback_title": "",
         "fallback_pdf_url": "",
-        "notes": "inoxpressa_catalog_match",
+        "notes": notes,
     }
