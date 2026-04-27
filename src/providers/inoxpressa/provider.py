@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.providers.simple_downloads import attach_downloads
+from src.providers.inoxpressa.downloads import attach_downloads
 from src.providers.inoxpressa.catalog import load_catalog_rows
 from src.providers.inoxpressa.resolver import resolve_reference
 

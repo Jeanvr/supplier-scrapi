@@ -18,6 +18,14 @@ STOPWORDS = {
     "CATÁLOGO",
 }
 
+PLACEHOLDER_REFS = {"01 20199"}
+
+CATALOG_FALLBACK_URL = "https://inoxpres.com/wp-content/uploads/2023/01/CATALOGO_GENERAL_V2022_HD.pdf"
+
+OFFICIAL_FAMILY_REVIEW_REASON = "official Inoxpres family/product image; verify variant visually"
+
+OFFICIAL_IMAGE_BY_FAMILY = {}
+
 
 def _normalize(text: str) -> str:
     text = clean_spaces(text)
@@ -49,6 +57,27 @@ def _digit_tokens(text: str) -> set[str]:
     return {token for token in _tokens(text) if any(ch.isdigit() for ch in token)}
 
 
+def _row_value(row: dict | None, aliases: list[str]) -> str:
+    if not row:
+        return ""
+
+    normalized = {clean_spaces(str(key)).casefold(): key for key in row}
+    for alias in aliases:
+        key = normalized.get(clean_spaces(alias).casefold())
+        if key is not None:
+            return clean_spaces(row.get(key, ""))
+
+    return ""
+
+
+def _provider_reference(reference: str, input_row: dict | None) -> str:
+    return _row_value(input_row, ["Referencia prov", "referencia prov", "referencia"]) or clean_spaces(reference)
+
+
+def _is_placeholder_ref(value: str) -> bool:
+    return _normalize(value) in {_normalize(ref) for ref in PLACEHOLDER_REFS}
+
+
 def _build_result(reference: str, name: str, *, status: str, notes: str) -> dict:
     return {
         "resolver_status": status,
@@ -70,6 +99,10 @@ def _build_result(reference: str, name: str, *, status: str, notes: str) -> dict
         "fallback_doc_type": "",
         "fallback_title": "",
         "fallback_pdf_url": "",
+        "download_reference": "",
+        "image_suspect": "",
+        "image_review_reason": "",
+        "image_match_scope": "",
         "notes": notes,
     }
 
@@ -160,52 +193,92 @@ def _score_row(reference: str, name: str, row: dict) -> int:
     return score
 
 
-def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> dict:
-    reference = clean_spaces(reference)
-    name = clean_spaces(name)
+def _family_key(provider_ref: str, name: str) -> str:
+    ref = _compact(provider_ref)
+    text = _normalize(f"{provider_ref} {name}")
 
-    if not catalog_rows:
-        return _build_not_found(reference, name, "inoxpressa_catalog_empty")
+    if ref.startswith("20EPDM") or "JUNTA TORICA EPDM" in text:
+        return "epdm"
+    if ref.startswith("62V2CQ") or "VALVULA BOLA TOTAL 2P" in text or "Q2" in text:
+        return "ball_valve"
+    if ref.startswith("664VR") or "VALVULA RETENCIO" in text or "RETENCION" in text:
+        return "check_valve"
 
-    ranked_rows = sorted(
-        ((_score_row(reference, name, row), row) for row in catalog_rows),
-        key=lambda item: item[0],
-        reverse=True,
-    )
-    best_score, best_row = ranked_rows[0] if ranked_rows else (-1, None)
-    if best_row is None or best_score < 260:
-        return _build_not_found(reference, name, "inoxpressa_no_catalog_match")
+    return ""
 
-    ref_compact = _compact(reference)
-    exact_ref_matches = [
-        row for row in catalog_rows if ref_compact and _compact(clean_spaces(row.get("supplier_ref", ""))) == ref_compact
-    ]
-    matched_name = clean_spaces(best_row.get("name", ""))
-    if len(exact_ref_matches) > 1 and not _has_strong_name_match(name, matched_name):
-        return _build_not_found(reference, name, "inoxpressa_ambiguous_reference_requires_name")
 
-    matched_ref = clean_spaces(best_row.get("supplier_ref", ""))
-    pdf_url = clean_spaces(best_row.get("pdf_url", ""))
-    pdf_kind = classify_document_kind(best_row)
-    pdf_title = clean_spaces(best_row.get("pdf_title", "")) or matched_name
-    pdf_doc_type = clean_spaces(best_row.get("pdf_doc_type", "")) or pdf_kind
+def _row_for_family(family: str, catalog_rows: list[dict]) -> dict | None:
+    if not family:
+        return None
 
-    resolver_status = "not_found"
-    if pdf_kind == "ficha_tecnica" and pdf_url:
-        resolver_status = "resolved_ficha_tecnica"
-    elif pdf_kind == "catalogo_producto" and pdf_url:
-        resolver_status = "resolved_catalogo_producto"
+    rows = list(catalog_rows)
+
+    def find_by_text(*needles: str) -> dict | None:
+        for row in rows:
+            blob = _search_blob(row)
+            if all(_normalize(needle) in blob for needle in needles):
+                return row
+        return None
+
+    if family == "epdm":
+        return find_by_text("JUNTA", "EPDM") or rows[0]
+    if family in {"ball_valve", "check_valve"}:
+        return (
+            find_by_text("VALVULA", "BOLA")
+            or find_by_text("VALVULA")
+            or rows[0]
+        )
+
+    return None
+
+
+def _catalog_result(
+    *,
+    reference: str,
+    provider_ref: str,
+    name: str,
+    row: dict,
+    score: int,
+    family: str,
+    notes: list[str],
+) -> dict:
+    matched_name = clean_spaces(row.get("name", "")) or name
+    matched_ref = clean_spaces(row.get("supplier_ref", ""))
+
+    if _is_placeholder_ref(matched_ref) and provider_ref:
+        matched_ref = provider_ref
+        notes.append("matched_ref_from_input_referencia_prov")
+
+    pdf_url = clean_spaces(row.get("pdf_url", "")) or CATALOG_FALLBACK_URL
+    pdf_kind = classify_document_kind(row) or "catalogo_producto"
+    if pdf_url == CATALOG_FALLBACK_URL:
+        pdf_kind = "catalogo_producto"
+
+    pdf_title = clean_spaces(row.get("pdf_title", "")) or "Catalogo general Inoxpres"
+    pdf_doc_type = clean_spaces(row.get("pdf_doc_type", "")) or "catalogo_web_pdf"
+
+    image_url = clean_spaces(row.get("image_url", ""))
+    image_suspect = ""
+    image_review_reason = ""
+    image_match_scope = ""
+
+    if not image_url and family in OFFICIAL_IMAGE_BY_FAMILY:
+        image_url = OFFICIAL_IMAGE_BY_FAMILY[family]
+        image_suspect = "review"
+        image_review_reason = OFFICIAL_FAMILY_REVIEW_REASON
+        image_match_scope = "official_family_image"
+        notes.append(f"official_family_image:{family}")
 
     return {
-        "resolver_status": resolver_status,
+        "resolver_status": "resolved_catalogo_producto" if pdf_url else "not_found",
         "reference": reference,
         "name": name,
         "matched_catalog_name": matched_name,
         "matched_catalog_ref": matched_ref,
-        "matched_catalog_score": str(best_score),
-        "product_page_url": clean_spaces(best_row.get("source_url", "")),
+        "matched_catalog_score": str(score),
+        "product_page_url": clean_spaces(row.get("source_url", "")),
         "product_page_title": matched_name,
-        "resolved_image_url": "",
+        "resolved_image_url": image_url,
         "preferred_pdf_kind": pdf_kind,
         "preferred_pdf_label": pdf_title if pdf_url else "",
         "preferred_pdf_url": pdf_url,
@@ -216,5 +289,55 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         "fallback_doc_type": "",
         "fallback_title": "",
         "fallback_pdf_url": "",
-        "notes": "inoxpressa_catalog_match",
+        "download_reference": provider_ref,
+        "image_suspect": image_suspect,
+        "image_review_reason": image_review_reason,
+        "image_match_scope": image_match_scope,
+        "notes": " | ".join(notes),
     }
+
+
+def resolve_reference(reference: str, name: str, catalog_rows: list[dict], input_row: dict | None = None) -> dict:
+    reference = clean_spaces(reference)
+    name = clean_spaces(name)
+    provider_ref = _provider_reference(reference, input_row)
+
+    if not catalog_rows:
+        return _build_not_found(reference, name, "inoxpressa_catalog_empty")
+
+    ranked_rows = sorted(
+        ((_score_row(provider_ref, name, row), row) for row in catalog_rows),
+        key=lambda item: item[0],
+        reverse=True,
+    )
+    best_score, best_row = ranked_rows[0] if ranked_rows else (-1, None)
+
+    notes = ["inoxpressa_catalog_match"]
+
+    family = _family_key(provider_ref, name)
+    family_row = _row_for_family(family, catalog_rows)
+
+    if best_row is None or best_score < 260:
+        if family_row is None:
+            return _build_not_found(reference, name, "inoxpressa_no_catalog_match")
+        best_row = family_row
+        best_score = max(best_score, 260)
+        notes.append(f"catalog_fallback_by_family:{family}")
+
+    ref_compact = _compact(provider_ref)
+    exact_ref_matches = [
+        row for row in catalog_rows if ref_compact and _compact(clean_spaces(row.get("supplier_ref", ""))) == ref_compact
+    ]
+    matched_name = clean_spaces(best_row.get("name", ""))
+    if len(exact_ref_matches) > 1 and not _has_strong_name_match(name, matched_name):
+        return _build_not_found(reference, name, "inoxpressa_ambiguous_reference_requires_name")
+
+    return _catalog_result(
+        reference=reference,
+        provider_ref=provider_ref,
+        name=name,
+        row=best_row,
+        score=best_score,
+        family=family,
+        notes=notes,
+    )
