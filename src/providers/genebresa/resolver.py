@@ -258,12 +258,8 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         "fallback_doc_type": "",
         "fallback_title": "",
         "fallback_pdf_url": "",
-<<<<<<< HEAD
-        "notes": notes,
-=======
         "image_suspect": "review" if image_match_scope == "official_family_image" else "",
         "image_review_reason": "official family image; verify size/variant visually" if image_match_scope == "official_family_image" else "",
         "image_match_scope": image_match_scope,
         "notes": " | ".join(notes),
->>>>>>> origin/main
     }

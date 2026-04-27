@@ -18,25 +18,7 @@ STOPWORDS = {
     "CATÁLOGO",
 }
 
-<<<<<<< HEAD
-GENERIC_VALVE_IMAGE_MARKERS = (
-    "bodegon_valvulasm-h",
-)
 
-
-def _append_note(notes: str, note: str) -> str:
-    notes = clean_spaces(notes)
-    if not notes:
-        return note
-    if note in notes:
-        return notes
-    return f"{notes} | {note}"
-
-
-def _is_generic_valve_family_image(image_url: str) -> bool:
-    image_url = clean_spaces(image_url).casefold()
-    return any(marker in image_url for marker in GENERIC_VALVE_IMAGE_MARKERS)
-=======
 PLACEHOLDER_REFS = {"01 20199"}
 
 CATALOG_FALLBACK_URL = "https://inoxpres.com/wp-content/uploads/2023/01/CATALOGO_GENERAL_V2022_HD.pdf"
@@ -44,7 +26,6 @@ CATALOG_FALLBACK_URL = "https://inoxpres.com/wp-content/uploads/2023/01/CATALOGO
 OFFICIAL_FAMILY_REVIEW_REASON = "official Inoxpres family/product image; verify variant visually"
 
 OFFICIAL_IMAGE_BY_FAMILY = {}
->>>>>>> origin/main
 
 
 def _normalize(text: str) -> str:
@@ -227,27 +208,6 @@ def _family_key(provider_ref: str, name: str) -> str:
     return ""
 
 
-<<<<<<< HEAD
-    matched_ref = clean_spaces(best_row.get("supplier_ref", ""))
-    raw_image_url = clean_spaces(best_row.get("image_url", ""))
-    image_url = raw_image_url
-    notes = "inoxpressa_catalog_match"
-    if _is_generic_valve_family_image(raw_image_url):
-        image_url = ""
-        notes = _append_note(notes, "image:suppressed_generic_valve_family")
-    pdf_url = clean_spaces(best_row.get("pdf_url", ""))
-    pdf_kind = classify_document_kind(best_row)
-    pdf_title = clean_spaces(best_row.get("pdf_title", "")) or matched_name
-    pdf_doc_type = clean_spaces(best_row.get("pdf_doc_type", "")) or pdf_kind
-
-    resolver_status = "not_found"
-    if pdf_kind == "ficha_tecnica" and pdf_url:
-        resolver_status = "resolved_ficha_tecnica"
-    elif pdf_kind == "catalogo_producto" and pdf_url:
-        resolver_status = "resolved_catalogo_producto"
-    elif image_url:
-        resolver_status = "resolved_image_only"
-=======
 def _row_for_family(family: str, catalog_rows: list[dict]) -> dict | None:
     if not family:
         return None
@@ -309,7 +269,6 @@ def _catalog_result(
         image_review_reason = OFFICIAL_FAMILY_REVIEW_REASON
         image_match_scope = "official_family_image"
         notes.append(f"official_family_image:{family}")
->>>>>>> origin/main
 
     return {
         "resolver_status": "resolved_catalogo_producto" if pdf_url else "not_found",
@@ -331,15 +290,11 @@ def _catalog_result(
         "fallback_doc_type": "",
         "fallback_title": "",
         "fallback_pdf_url": "",
-<<<<<<< HEAD
-        "notes": notes,
-=======
         "download_reference": provider_ref,
         "image_suspect": image_suspect,
         "image_review_reason": image_review_reason,
         "image_match_scope": image_match_scope,
         "notes": " | ".join(notes),
->>>>>>> origin/main
     }
 
 
