@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import Callable
 
@@ -73,10 +74,19 @@ def print_summary(output_df: pd.DataFrame, out_path: Path, *, download: bool, pd
         print(f"  pdfs_dir: {pdfs_dir_path}")
 
 
-ResolverFn = Callable[[str, str, list[dict]], dict]
+ResolverFn = Callable[..., dict]
 PostprocessFn = Callable[[list[dict]], list[dict]]
 AttachDownloadsFn = Callable[..., dict]
 LoadCatalogRowsFn = Callable[[Path], list[dict]]
+
+
+def pick_download_reference(result: dict) -> str:
+    for key in ("download_reference", "media_reference", "output_reference", "reference"):
+        value = clean_spaces(result.get(key, ""))
+        if value:
+            return value
+
+    return ""
 
 
 def run_excel_resolver(
@@ -113,6 +123,7 @@ def run_excel_resolver(
 
     results = []
     total = len(df)
+    resolve_accepts_row = len(inspect.signature(resolve_reference).parameters) >= 4
 
     for idx, row in df.iterrows():
         reference = clean_spaces(row.get(ref_col, ""))
@@ -122,7 +133,11 @@ def run_excel_resolver(
             result = build_empty_result(name)
         else:
             print(f"[{idx + 1}/{total}] Resolviendo {reference} | {name}")
-            result = resolve_reference(reference, name, catalog_rows)
+            if resolve_accepts_row:
+                row_context = {str(col): clean_spaces(row.get(col, "")) for col in df.columns}
+                result = resolve_reference(reference, name, catalog_rows, row_context)
+            else:
+                result = resolve_reference(reference, name, catalog_rows)
             print(
                 f"  -> provisional {result['resolver_status']} | "
                 f"img={'si' if result.get('resolved_image_url') else 'no'} | "
@@ -139,7 +154,7 @@ def run_excel_resolver(
         if attach_downloads_fn is not None:
             result = attach_downloads_fn(
                 result=result,
-                reference=clean_spaces(result.get("reference", "")),
+                reference=pick_download_reference(result),
                 name=clean_spaces(result.get("name", "")),
                 download_enabled=download,
                 images_dir=images_dir_path,
