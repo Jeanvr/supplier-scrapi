@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from src.providers.simple_downloads import attach_downloads
 from src.providers.tucaisa.catalog import load_catalog_rows
+from src.providers.tucaisa.downloads import attach_downloads
 from src.providers.tucaisa.resolver import resolve_reference
 
 

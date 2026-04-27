@@ -122,6 +122,8 @@ def _score_row(reference: str, name: str, row: dict) -> int:
 
     if row.get("pdf_url"):
         score += 20
+    if row.get("image_url"):
+        score += 10
 
     return score
 
@@ -149,6 +151,10 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
     pdf_kind = classify_document_kind(best_row)
     pdf_title = clean_spaces(best_row.get("pdf_title", "")) or matched_name
     pdf_doc_type = clean_spaces(best_row.get("pdf_doc_type", "")) or pdf_kind
+    image_url = clean_spaces(best_row.get("image_url", ""))
+    image_match_scope = clean_spaces(best_row.get("image_match_scope", ""))
+    catalog_notes = clean_spaces(best_row.get("catalog_notes", ""))
+    exact_ref_match = bool(reference and matched_ref and _compact(reference) == _compact(matched_ref))
 
     resolver_status = "not_found"
     if pdf_kind == "ficha_tecnica" and pdf_url:
@@ -157,6 +163,18 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         resolver_status = "resolved_catalogo_producto"
     elif image_url:
         resolver_status = "resolved_image_only"
+<<<<<<< HEAD
+=======
+
+    notes = ["aquaramvalvesfittingsslch_catalog_match"]
+    notes.append("exact_ref_match" if exact_ref_match else "non_exact_ref_match")
+    if pdf_url:
+        notes.append("official_technical_catalog")
+    if image_url:
+        notes.append(f"image_scope:{image_match_scope or 'catalog'}")
+    if catalog_notes:
+        notes.append(catalog_notes)
+>>>>>>> origin/main
 
     return {
         "resolver_status": resolver_status,
@@ -178,5 +196,8 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         "fallback_doc_type": "",
         "fallback_title": "",
         "fallback_pdf_url": "",
-        "notes": "aquaramvalvesfittingsslch_catalog_match",
+        "image_suspect": "review" if image_match_scope == "family_product_page" else "",
+        "image_review_reason": "family image; exact reference validated in official PDF catalog" if image_match_scope == "family_product_page" else "",
+        "image_match_scope": image_match_scope,
+        "notes": " | ".join(notes),
     }

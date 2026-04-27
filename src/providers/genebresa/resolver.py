@@ -63,6 +63,46 @@ def _tokens(text: str) -> list[str]:
     return result
 
 
+def _reference_base(reference: str) -> str:
+    return _normalize(reference).split()[0] if _normalize(reference) else ""
+
+
+def _official_pdf_url(reference: str) -> str:
+    base = _reference_base(reference)
+    if not base:
+        return ""
+    return f"https://pim.genebre.es/genebre/documents/fichas_tecnicas/{base}.pdf"
+
+
+def _official_image_url(reference: str) -> str:
+    base = _reference_base(reference)
+    if not base:
+        return ""
+    image_base = "2108A" if base == "2108AB" else base
+    return f"https://www.genebre.es/media/contents/product/mh/{image_base}.jpg"
+
+
+def _is_placeholder_ref(value: str) -> bool:
+    return _compact(value) == "0120492"
+
+
+def _can_derive_exact_ref(reference: str, name: str, row: dict) -> bool:
+    base = _reference_base(reference)
+    if not base:
+        return False
+
+    row_blob = _search_blob(row)
+    row_blob_compact = row_blob.replace(" ", "")
+    numeric_family = re.match(r"\d+", base)
+    family_match = base in row_blob_compact or bool(numeric_family and numeric_family.group(0) in row_blob_compact)
+    if not family_match:
+        return False
+
+    name_norm = _normalize(name)
+    row_name_norm = _normalize(clean_spaces(row.get("name", "")))
+    return bool(name_norm and row_name_norm and (name_norm == row_name_norm or row_name_norm in name_norm))
+
+
 def _build_result(reference: str, name: str, *, status: str, notes: str) -> dict:
     return {
         "resolver_status": status,
@@ -172,6 +212,23 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
     pdf_kind = classify_document_kind(best_row)
     pdf_title = clean_spaces(best_row.get("pdf_title", "")) or matched_name
     pdf_doc_type = clean_spaces(best_row.get("pdf_doc_type", "")) or pdf_kind
+    image_match_scope = clean_spaces(best_row.get("image_match_scope", ""))
+    notes = ["genebresa_catalog_match"]
+
+    if _is_placeholder_ref(matched_ref) and _can_derive_exact_ref(reference, name, best_row):
+        matched_ref = reference
+        image_url = _official_image_url(reference)
+        pdf_url = _official_pdf_url(reference)
+        pdf_kind = "ficha_tecnica"
+        pdf_title = f"Ficha tecnica Genebre {clean_spaces(_reference_base(reference))}"
+        pdf_doc_type = "ficha_tecnica"
+        image_match_scope = "official_family_image"
+        notes.append("derived_exact_ref_from_input")
+        notes.append("official_family_datasheet_pdf")
+        notes.append(f"image_scope:{image_match_scope}")
+        notes.append("image_review:official_family_image_verify_size_variant")
+        if _reference_base(reference) == "2108AB":
+            notes.append("image_base:2108A_for_2108AB")
 
     resolver_status = "not_found"
     if pdf_kind == "ficha_tecnica" and pdf_url:
@@ -201,5 +258,12 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         "fallback_doc_type": "",
         "fallback_title": "",
         "fallback_pdf_url": "",
+<<<<<<< HEAD
         "notes": notes,
+=======
+        "image_suspect": "review" if image_match_scope == "official_family_image" else "",
+        "image_review_reason": "official family image; verify size/variant visually" if image_match_scope == "official_family_image" else "",
+        "image_match_scope": image_match_scope,
+        "notes": " | ".join(notes),
+>>>>>>> origin/main
     }
