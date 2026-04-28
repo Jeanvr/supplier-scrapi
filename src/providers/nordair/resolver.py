@@ -141,16 +141,22 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
 
     matched_name = clean_spaces(best_row.get("name", ""))
     matched_ref = clean_spaces(best_row.get("supplier_ref", ""))
+    source_url = clean_spaces(best_row.get("source_url", ""))
+    image_url = clean_spaces(best_row.get("image_url", ""))
     pdf_url = clean_spaces(best_row.get("pdf_url", ""))
     pdf_kind = classify_document_kind(best_row)
     pdf_title = clean_spaces(best_row.get("pdf_title", "")) or matched_name
     pdf_doc_type = clean_spaces(best_row.get("pdf_doc_type", "")) or pdf_kind
 
     resolver_status = "not_found"
+    notes = "nordair_catalog_match"
     if pdf_kind == "ficha_tecnica" and pdf_url:
         resolver_status = "resolved_ficha_tecnica"
     elif pdf_kind == "catalogo_producto" and pdf_url:
         resolver_status = "resolved_catalogo_producto"
+    elif source_url:
+        resolver_status = "resolved_catalogo_producto"
+        notes = "nordair_catalog_match;product_page_only_no_media"
 
     return {
         "resolver_status": resolver_status,
@@ -159,9 +165,9 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         "matched_catalog_name": matched_name,
         "matched_catalog_ref": matched_ref,
         "matched_catalog_score": str(best_score),
-        "product_page_url": clean_spaces(best_row.get("source_url", "")),
+        "product_page_url": source_url,
         "product_page_title": matched_name,
-        "resolved_image_url": "",
+        "resolved_image_url": image_url,
         "preferred_pdf_kind": pdf_kind,
         "preferred_pdf_label": pdf_title if pdf_url else "",
         "preferred_pdf_url": pdf_url,
@@ -172,5 +178,5 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         "fallback_doc_type": "",
         "fallback_title": "",
         "fallback_pdf_url": "",
-        "notes": "nordair_catalog_match",
+        "notes": notes,
     }
