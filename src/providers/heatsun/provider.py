@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from src.providers.simple_downloads import attach_downloads
 from src.providers.heatsun.catalog import load_catalog_rows
+from src.providers.heatsun.downloads import attach_downloads
 from src.providers.heatsun.resolver import resolve_reference
 
 

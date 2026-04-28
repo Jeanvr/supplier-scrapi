@@ -48,6 +48,23 @@ def _digit_tokens(text: str) -> set[str]:
     return {token for token in _tokens(text) if any(ch.isdigit() for ch in token)}
 
 
+def _reference_key(value: str) -> str:
+    return re.sub(r"\s+", "", clean_spaces(value).upper())
+
+
+def _reference_variants(value: str) -> set[str]:
+    key = _reference_key(value)
+    if not key:
+        return set()
+
+    variants = {key}
+    if key.startswith("HEAT") and len(key) > 4:
+        variants.add(key[4:])
+    else:
+        variants.add(f"HEAT{key}")
+    return variants
+
+
 def _build_result(reference: str, name: str, *, status: str, notes: str) -> dict:
     return {
         "resolver_status": status,
@@ -75,6 +92,45 @@ def _build_result(reference: str, name: str, *, status: str, notes: str) -> dict
 
 def _build_not_found(reference: str, name: str, note: str) -> dict:
     return _build_result(reference, name, status="not_found", notes=note)
+
+
+def _build_match_result(reference: str, name: str, row: dict, *, score: str, notes: str) -> dict:
+    matched_name = clean_spaces(row.get("name", ""))
+    matched_ref = clean_spaces(row.get("reference", "")) or clean_spaces(row.get("supplier_ref", ""))
+    image_url = clean_spaces(row.get("image_url", ""))
+    pdf_url = clean_spaces(row.get("pdf_url", ""))
+    pdf_kind = classify_document_kind(row)
+    pdf_title = clean_spaces(row.get("pdf_title", "")) or matched_name
+    pdf_doc_type = clean_spaces(row.get("pdf_doc_type", "")) or pdf_kind
+
+    resolver_status = "not_found"
+    if pdf_kind == "ficha_tecnica" and pdf_url:
+        resolver_status = "resolved_ficha_tecnica"
+    elif pdf_kind == "catalogo_producto" and pdf_url:
+        resolver_status = "resolved_catalogo_producto"
+
+    return {
+        "resolver_status": resolver_status,
+        "reference": reference,
+        "name": name,
+        "matched_catalog_name": matched_name,
+        "matched_catalog_ref": matched_ref,
+        "matched_catalog_score": score,
+        "product_page_url": clean_spaces(row.get("source_url", "")),
+        "product_page_title": matched_name,
+        "resolved_image_url": image_url,
+        "preferred_pdf_kind": pdf_kind,
+        "preferred_pdf_label": pdf_title if pdf_url else "",
+        "preferred_pdf_url": pdf_url,
+        "preferred_pdf_check_ok": "",
+        "preferred_pdf_content_type": "",
+        "preferred_doc_type": pdf_doc_type,
+        "preferred_title": pdf_title if pdf_url else "",
+        "fallback_doc_type": "",
+        "fallback_title": "",
+        "fallback_pdf_url": "",
+        "notes": notes,
+    }
 
 
 def _search_blob(row: dict) -> str:
@@ -159,12 +215,41 @@ def _score_row(reference: str, name: str, row: dict) -> int:
     return score
 
 
+def _find_exact_reference_match(reference: str, catalog_rows: list[dict]) -> dict | None:
+    query_variants = _reference_variants(reference)
+    if not query_variants:
+        return None
+
+    matches: list[dict] = []
+    for row in catalog_rows:
+        row_variants = set()
+        for value in [row.get("reference", ""), row.get("supplier_ref", "")]:
+            row_variants.update(_reference_variants(str(value)))
+        if query_variants & row_variants:
+            matches.append(row)
+
+    if len(matches) == 1:
+        return matches[0]
+
+    return None
+
+
 def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> dict:
     reference = clean_spaces(reference)
     name = clean_spaces(name)
 
     if not catalog_rows:
         return _build_not_found(reference, name, "heatsun_catalog_empty")
+
+    exact_ref_match = _find_exact_reference_match(reference, catalog_rows)
+    if exact_ref_match is not None:
+        return _build_match_result(
+            reference,
+            name,
+            exact_ref_match,
+            score="exact_ref",
+            notes="heatsun_exact_reference_match",
+        )
 
     ranked_rows = sorted(
         ((_score_row(reference, name, row), row) for row in catalog_rows),
@@ -182,38 +267,10 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
     matched_name = clean_spaces(best_row.get("name", ""))
     if len(exact_ref_matches) > 1 and not _has_strong_name_match(name, matched_name):
         return _build_not_found(reference, name, "heatsun_ambiguous_reference_requires_name")
-
-    matched_ref = clean_spaces(best_row.get("supplier_ref", ""))
-    pdf_url = clean_spaces(best_row.get("pdf_url", ""))
-    pdf_kind = classify_document_kind(best_row)
-    pdf_title = clean_spaces(best_row.get("pdf_title", "")) or matched_name
-    pdf_doc_type = clean_spaces(best_row.get("pdf_doc_type", "")) or pdf_kind
-
-    resolver_status = "not_found"
-    if pdf_kind == "ficha_tecnica" and pdf_url:
-        resolver_status = "resolved_ficha_tecnica"
-    elif pdf_kind == "catalogo_producto" and pdf_url:
-        resolver_status = "resolved_catalogo_producto"
-
-    return {
-        "resolver_status": resolver_status,
-        "reference": reference,
-        "name": name,
-        "matched_catalog_name": matched_name,
-        "matched_catalog_ref": matched_ref,
-        "matched_catalog_score": str(best_score),
-        "product_page_url": clean_spaces(best_row.get("source_url", "")),
-        "product_page_title": matched_name,
-        "resolved_image_url": "",
-        "preferred_pdf_kind": pdf_kind,
-        "preferred_pdf_label": pdf_title if pdf_url else "",
-        "preferred_pdf_url": pdf_url,
-        "preferred_pdf_check_ok": "",
-        "preferred_pdf_content_type": "",
-        "preferred_doc_type": pdf_doc_type,
-        "preferred_title": pdf_title if pdf_url else "",
-        "fallback_doc_type": "",
-        "fallback_title": "",
-        "fallback_pdf_url": "",
-        "notes": "heatsun_catalog_match",
-    }
+    return _build_match_result(
+        reference,
+        name,
+        best_row,
+        score=str(best_score),
+        notes="heatsun_catalog_match",
+    )
