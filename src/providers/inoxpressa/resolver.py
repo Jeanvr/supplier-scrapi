@@ -257,18 +257,13 @@ def _catalog_result(
     pdf_title = clean_spaces(row.get("pdf_title", "")) or "Catalogo general Inoxpres"
     pdf_doc_type = clean_spaces(row.get("pdf_doc_type", "")) or "catalogo_web_pdf"
 
-    image_url = clean_spaces(row.get("image_url", ""))
+    # Inoxpres: do not use web/family images as final product images.
+    # Product IMG will be generated later from the trimmed PDF page when a clean crop is available.
+    image_url = ""
     image_suspect = ""
     image_review_reason = ""
     image_match_scope = ""
-
-    if not image_url and family in OFFICIAL_IMAGE_BY_FAMILY:
-        image_url = OFFICIAL_IMAGE_BY_FAMILY[family]
-        image_suspect = "review"
-        image_review_reason = OFFICIAL_FAMILY_REVIEW_REASON
-        image_match_scope = "official_family_image"
-        notes.append(f"official_family_image:{family}")
-
+    
     return {
         "resolver_status": "resolved_catalogo_producto" if pdf_url else "not_found",
         "reference": reference,
