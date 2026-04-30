@@ -41,7 +41,61 @@ Prioridad actual:
   - resolved_image_only
   - not_found
 - Si hay descargas, comprueba naming final de imagen y PDF.
-Calpeda:
-- Prioridad actual: aceptar datasheet EN como ficha técnica válida cuando no exista evidencia real de ficha equivalente en ES.
-- No invertir tiempo en priorización ES en catalog.py sin evidencia concreta de URLs técnicas ES individuales.
-- No priorizar catálogos mixtos 60Hz English/Español por delante de datasheet_EN.
+
+## Codex style
+CAVEMAN ULTRA ACTIVE by default.
+
+- Maximum compression.
+- Telegraphic.
+- Short answers.
+- No filler.
+- Prefer commands, diffs, exact files, exact checks.
+- For code, commits, security, destructive actions, PDF processing, and risky changes: write normally when needed.
+- User can say "normal mode" to deactivate this style.
+
+## Uso con Codex
+- Antes de implementar, inspeccionar archivos relevantes.
+- Primero explicar plan mínimo en 3-5 líneas.
+- No editar hasta tener claro el alcance.
+- Cambios pequeños y revisables.
+- Un solo provider por iteración.
+- Después de editar, mostrar:
+  - archivos tocados
+  - resumen del cambio
+  - comandos de validación
+  - métricas before/after si aplica
+- Si algo no está claro, no inventar: pedir dato o proponer prueba corta.
+- No hacer cambios globales para arreglar un provider salvo necesidad real.
+
+## Anti-sobreingeniería
+- No crear arquitecturas nuevas sin pedirlo.
+- No añadir dependencias sin justificarlo.
+- No cambiar nombres de columnas ni naming de archivos sin avisar antes.
+- No tocar scripts batch/core si se puede resolver en el provider.
+- Preferir parche pequeño a solución perfecta grande.
+
+## Calpeda enfoque actual
+- Web Calpeda no es fuente principal: puede traer productos parecidos pero no exactos.
+- Prioridad actual: usar catálogo/tarifa PDF por referencia exacta.
+- Tarifa global actual:
+  - https://www.calpeda.com/wp-content/uploads/2025/03/CALPEDA-Catalogo-Tarifa-B19-marzo-2025-WEB.pdf
+- Buscar referencia exacta en PDF de tarifa/catálogo.
+- Generar PDF final desde la página o familia donde aparece la referencia.
+- Máximo 3 páginas para family-crop.
+- Quitar/ocultar precios de proveedor antes de guardar el PDF final.
+- Mejor PDF de tarifa correcto y sin precios que ficha web dudosa.
+- Mejor dejar imagen vacía que asignar una imagen incorrecta.
+- Usar `resolved_catalogo_producto` para tarifa global.
+- Marcar en notes/download_notes:
+  - `calpeda_tarifa_global_candidate`
+  - `calpeda_tarifa_global_preferred`
+  - `calpeda_tarifa_ref_exact`
+  - `price_removed`
+  - `calpeda_family_crop`
+  - `calpeda_family_pages=...`
+  - `calpeda_pdf_ref_not_exact`
+- No romper estados existentes:
+  - `resolved_ficha_tecnica`
+  - `resolved_catalogo_producto`
+  - `resolved_image_only`
+  - `not_found`
