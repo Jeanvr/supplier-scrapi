@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.core.multi_provider_resolver import normalize_provider_key
 from src.core.text import clean_spaces
 from src.providers.loader import load_provider
 
@@ -35,23 +36,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--download", dest="download", action="store_true", help="Descarga imágenes y PDFs")
     parser.add_argument("--no-download", dest="download", action="store_false", help="No descarga imágenes ni PDFs")
     return parser
-
-
-def normalize_provider_key(raw_brand: str) -> str:
-    normalized = clean_spaces(raw_brand).casefold()
-    if not normalized:
-        return ""
-
-    if "bosch" in normalized or "junkers" in normalized:
-        return "bosch"
-    if "calpeda" in normalized:
-        return "calpeda"
-    if "grundfos" in normalized:
-        return "grundfos"
-    if "ariston" in normalized:
-        return "ariston"
-
-    return re.sub(r"[^a-z0-9]+", "", normalized)
 
 
 def slugify(value: str) -> str:

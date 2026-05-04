@@ -6,8 +6,9 @@ delegando cada fila al resolver específico del proveedor.
 
 from __future__ import annotations
 
+import re
+import tempfile
 from pathlib import Path
-from typing import Callable
 
 import pandas as pd
 
@@ -15,13 +16,22 @@ from src.core.text import clean_spaces
 from src.providers.loader import load_provider
 
 
-def normalize_provider_name(name: str) -> str:
+def normalize_provider_key(raw_brand: str) -> str:
     """Normaliza nombre de proveedor a clave estándar."""
-    normalized = (name or "").strip().lower()
-    # Junkers siempre se trata como Bosch
-    if normalized in ("junkers", "junker"):
+    normalized = clean_spaces(raw_brand).casefold()
+    if not normalized:
+        return ""
+
+    if "bosch" in normalized or "junkers" in normalized:
         return "bosch"
-    return normalized
+    if "calpeda" in normalized:
+        return "calpeda"
+    if "grundfos" in normalized:
+        return "grundfos"
+    if "ariston" in normalized:
+        return "ariston"
+
+    return re.sub(r"[^a-z0-9]+", "", normalized)
 
 
 def detect_provider_from_row(row: pd.Series, provider_col: str | None = None) -> str | None:
@@ -33,16 +43,16 @@ def detect_provider_from_row(row: pd.Series, provider_col: str | None = None) ->
     3. Retorna None si no es detectable
     """
     if provider_col and provider_col in row.index:
-        val = row.get(provider_col, "").strip()
+        val = clean_spaces(row.get(provider_col, ""))
         if val:
-            return normalize_provider_name(val)
+            return normalize_provider_key(val)
     
     # Buscar columnas alternativas
     for col_name in ["marca", "proveedor", "provider", "Marca", "Proveedor", "Provider"]:
         if col_name in row.index:
-            val = row.get(col_name, "").strip()
+            val = clean_spaces(row.get(col_name, ""))
             if val:
-                return normalize_provider_name(val)
+                return normalize_provider_key(val)
     
     return None
 
@@ -113,73 +123,68 @@ def run_multi_provider_resolver(
     if provider_errors:
         print(f"Filas sin proveedor detectable: {len(provider_errors)}")
 
-    # Procesar cada grupo de proveedor
     all_results = {}
     provider_statuses = {}
 
-    for provider_key, row_indices in provider_groups.items():
-        print(f"\n[{provider_key.upper()}] Procesando {len(row_indices)} filas...")
-        
-        try:
-            provider = load_provider(provider_key)
-        except Exception as e:
-            print(f"  ERROR: No se puede cargar proveedor {provider_key}: {e}")
-            provider_statuses[provider_key] = "not_implemented"
-            continue
+    with tempfile.TemporaryDirectory(prefix="multi_provider_resolver_") as temp_dir_name:
+        temp_dir = Path(temp_dir_name)
 
-        # Crear temporal con filas de este proveedor
-        subset_df = df.iloc[row_indices].copy()
-        temp_excel = Path(f"/tmp/multi_provider_{provider_key}_temp.xlsx")
-        subset_df.to_excel(temp_excel, index=False)
-
-        try:
-            # Procesar con el resolver del proveedor
-            images_dir = str(Path(images_base_dir) / f"{provider_key}_resolved")
-            pdfs_dir = str(Path(pdfs_base_dir) / f"{provider_key}_resolved")
-
-            run_excel_resolver(
-                excel=str(temp_excel),
-                out=str(Path(f"/tmp/multi_provider_{provider_key}_output_temp.xlsx")),
-                catalog_jsonl=provider.get("default_catalog_jsonl", ""),
-                ref_aliases=provider["ref_aliases"],
-                name_aliases=provider["name_aliases"],
-                load_catalog_rows=provider["load_catalog_rows"],
-                resolve_reference=provider["resolve_reference"],
-                postprocess_results=provider.get("postprocess_results"),
-                attach_downloads_fn=provider.get("attach_downloads_fn"),
-                download=download,
-                images_dir=images_dir,
-                pdfs_dir=pdfs_dir,
-                catalog_label=provider.get("catalog_label", f"{provider_key}_catalog_rows"),
-            )
-
-            # Leer resultados
-            results_df = pd.read_excel(Path(f"/tmp/multi_provider_{provider_key}_output_temp.xlsx"), dtype=str)
+        for provider_key, row_indices in provider_groups.items():
+            print(f"\n[{provider_key.upper()}] Procesando {len(row_indices)} filas...")
             
-            # Mapear resultados a índices originales
-            for out_idx, original_idx in enumerate(row_indices):
-                if out_idx < len(results_df):
-                    result_row = results_df.iloc[out_idx].to_dict()
-                    result_row["provider_detected"] = provider_key
-                    result_row["provider_resolver"] = "completed"
-                    all_results[original_idx] = result_row
+            try:
+                provider = load_provider(provider_key)
+            except Exception as e:
+                print(f"  ERROR: No se puede cargar proveedor {provider_key}: {e}")
+                provider_statuses[provider_key] = "not_implemented"
+                continue
 
-            provider_statuses[provider_key] = "completed"
-            print(f"  ✓ {provider_key}: {len(row_indices)} filas procesadas")
+            subset_df = df.iloc[row_indices].copy()
+            temp_excel = temp_dir / f"{provider_key}_input.xlsx"
+            temp_output = temp_dir / f"{provider_key}_output.xlsx"
+            subset_df.to_excel(temp_excel, index=False)
 
-        except Exception as e:
-            print(f"  ERROR: {e}")
-            provider_statuses[provider_key] = "error"
-            # Marcar filas de este proveedor como error
-            for original_idx in row_indices:
-                all_results[original_idx] = {
-                    "provider_detected": provider_key,
-                    "provider_resolver": "error",
-                    "notes": str(e),
-                }
-        finally:
-            temp_excel.unlink(missing_ok=True)
-            Path(f"/tmp/multi_provider_{provider_key}_output_temp.xlsx").unlink(missing_ok=True)
+            try:
+                images_dir = str(Path(images_base_dir) / f"{provider_key}_resolved")
+                pdfs_dir = str(Path(pdfs_base_dir) / f"{provider_key}_resolved")
+
+                run_excel_resolver(
+                    excel=str(temp_excel),
+                    out=str(temp_output),
+                    catalog_jsonl=provider.get("default_catalog_jsonl", ""),
+                    ref_aliases=provider["ref_aliases"],
+                    name_aliases=provider["name_aliases"],
+                    load_catalog_rows=provider["load_catalog_rows"],
+                    resolve_reference=provider["resolve_reference"],
+                    postprocess_results=provider.get("postprocess_results"),
+                    attach_downloads_fn=provider.get("attach_downloads_fn"),
+                    download=download,
+                    images_dir=images_dir,
+                    pdfs_dir=pdfs_dir,
+                    catalog_label=provider.get("catalog_label", f"{provider_key}_catalog_rows"),
+                )
+
+                results_df = pd.read_excel(temp_output, dtype=str).fillna("")
+                
+                for out_idx, original_idx in enumerate(row_indices):
+                    if out_idx < len(results_df):
+                        result_row = results_df.iloc[out_idx].to_dict()
+                        result_row["provider_detected"] = provider_key
+                        result_row["provider_resolver"] = "completed"
+                        all_results[original_idx] = result_row
+
+                provider_statuses[provider_key] = "completed"
+                print(f"  ok: {provider_key}: {len(row_indices)} filas procesadas")
+
+            except Exception as e:
+                print(f"  ERROR: {e}")
+                provider_statuses[provider_key] = "error"
+                for original_idx in row_indices:
+                    all_results[original_idx] = {
+                        "provider_detected": provider_key,
+                        "provider_resolver": "error",
+                        "notes": str(e),
+                    }
 
     # Marcar filas sin proveedor detectado
     for error_info in provider_errors:
@@ -216,4 +221,14 @@ def run_multi_provider_resolver(
         count = len(provider_groups.get(prov, []))
         print(f"  {prov}: {count} filas [{status}]")
     print(f"Filas sin proveedor: {len(provider_errors)}")
+    if "resolver_status" in output_df.columns:
+        print(f"resolved_ficha_tecnica: {(output_df['resolver_status'] == 'resolved_ficha_tecnica').sum()}")
+        print(f"resolved_catalogo_producto: {(output_df['resolver_status'] == 'resolved_catalogo_producto').sum()}")
+        print(f"resolved_image_only: {(output_df['resolver_status'] == 'resolved_image_only').sum()}")
+        print(f"not_found: {(output_df['resolver_status'] == 'not_found').sum()}")
+    if "download_status" in output_df.columns:
+        print("download_status:")
+        for status, count in output_df["download_status"].fillna("").value_counts().sort_index().items():
+            label = status or "(empty)"
+            print(f"  {label}: {count}")
     print(f"Output: {out_path}")
