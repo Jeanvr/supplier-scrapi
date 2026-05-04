@@ -175,14 +175,24 @@ def attach_downloads(
             notes.append(f"image:{error or 'unknown_error'}")
 
     if pdf_url and pdf_path is not None:
-        ok, final_url, content_type, error = download_binary(pdf_url, pdf_path, accept_pdf=True)
+        temp_pdf_path = pdf_path.with_suffix(".tmp")
+        ok, final_url, content_type, error = download_binary(pdf_url, temp_pdf_path, accept_pdf=True)
         if ok:
-            result["local_pdf"] = str(pdf_path)
-            result["downloaded_pdf_url"] = final_url
-            pdf_ok = True
+            try:
+                if temp_pdf_path.read_bytes()[:4] != b"%PDF":
+                    notes.append(f"pdf:invalid_pdf_signature:{content_type or 'unknown'}")
+                else:
+                    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+                    temp_pdf_path.replace(pdf_path)
+                    result["local_pdf"] = str(pdf_path)
+                    result["downloaded_pdf_url"] = final_url
+                    pdf_ok = True
+            except OSError as exc:
+                notes.append(f"pdf:write_error:{exc}")
+            finally:
+                temp_pdf_path.unlink(missing_ok=True)
         else:
-            if pdf_path.exists():
-                pdf_path.unlink(missing_ok=True)
+            temp_pdf_path.unlink(missing_ok=True)
             notes.append(f"pdf:{error or 'unknown_error'}")
 
     if image_ok and pdf_ok:
