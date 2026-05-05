@@ -33,6 +33,7 @@ def _normalize_catalog_row(row: dict) -> dict:
     normalized_row["pdf_title"] = clean_spaces(normalized_row.get("pdf_title", ""))
     normalized_row["pdf_language"] = clean_spaces(normalized_row.get("pdf_language", ""))
     normalized_row["pdf_doc_type"] = clean_spaces(normalized_row.get("pdf_doc_type", ""))
+    normalized_row["qr_technical_data_url"] = clean_spaces(normalized_row.get("qr_technical_data_url", ""))
     normalized_row["search_text"] = clean_spaces(normalized_row.get("search_text", ""))
     normalized_row["pdf_kind"] = classify_document_kind(normalized_row)
     return normalized_row

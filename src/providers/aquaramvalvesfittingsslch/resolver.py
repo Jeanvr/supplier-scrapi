@@ -150,13 +150,19 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
     pdf_kind = classify_document_kind(best_row)
     pdf_title = clean_spaces(best_row.get("pdf_title", "")) or matched_name
     pdf_doc_type = clean_spaces(best_row.get("pdf_doc_type", "")) or pdf_kind
+    qr_technical_data_url = clean_spaces(best_row.get("qr_technical_data_url", ""))
     image_url = clean_spaces(best_row.get("image_url", ""))
     image_match_scope = clean_spaces(best_row.get("image_match_scope", ""))
     catalog_notes = clean_spaces(best_row.get("catalog_notes", ""))
     exact_ref_match = bool(reference and matched_ref and _compact(reference) == _compact(matched_ref))
 
+    preferred_pdf_url = qr_technical_data_url or pdf_url
+    preferred_pdf_kind = "ficha_tecnica" if qr_technical_data_url else pdf_kind
+    preferred_pdf_label = "Aquaram QR Technical Data" if qr_technical_data_url else pdf_title
+    preferred_doc_type = "ficha_tecnica" if qr_technical_data_url else pdf_doc_type
+
     resolver_status = "not_found"
-    if pdf_kind == "ficha_tecnica" and pdf_url:
+    if qr_technical_data_url or (pdf_kind == "ficha_tecnica" and pdf_url):
         resolver_status = "resolved_ficha_tecnica"
     elif pdf_kind == "catalogo_producto" and pdf_url:
         resolver_status = "resolved_catalogo_producto"
@@ -169,6 +175,9 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         notes.append("official_technical_catalog")
     if image_url:
         notes.append(f"image_scope:{image_match_scope or 'catalog'}")
+    if qr_technical_data_url:
+        notes.append("aquaram_qr_technical_data")
+        notes.append("aquaram_qr_pdf_preferred")
     if catalog_notes:
         notes.append(catalog_notes)
 
@@ -182,16 +191,16 @@ def resolve_reference(reference: str, name: str, catalog_rows: list[dict]) -> di
         "product_page_url": clean_spaces(best_row.get("source_url", "")),
         "product_page_title": matched_name,
         "resolved_image_url": image_url,
-        "preferred_pdf_kind": pdf_kind,
-        "preferred_pdf_label": pdf_title if pdf_url else "",
-        "preferred_pdf_url": pdf_url,
+        "preferred_pdf_kind": preferred_pdf_kind,
+        "preferred_pdf_label": preferred_pdf_label if preferred_pdf_url else "",
+        "preferred_pdf_url": preferred_pdf_url,
         "preferred_pdf_check_ok": "",
         "preferred_pdf_content_type": "",
-        "preferred_doc_type": pdf_doc_type,
-        "preferred_title": pdf_title if pdf_url else "",
-        "fallback_doc_type": "",
-        "fallback_title": "",
-        "fallback_pdf_url": "",
+        "preferred_doc_type": preferred_doc_type,
+        "preferred_title": preferred_pdf_label if preferred_pdf_url else "",
+        "fallback_doc_type": pdf_doc_type if qr_technical_data_url else "",
+        "fallback_title": pdf_title if qr_technical_data_url else "",
+        "fallback_pdf_url": pdf_url if qr_technical_data_url else "",
         "image_suspect": "review" if image_match_scope == "family_product_page" else "",
         "image_review_reason": "family image; exact reference validated in official PDF catalog" if image_match_scope == "family_product_page" else "",
         "image_match_scope": image_match_scope,
